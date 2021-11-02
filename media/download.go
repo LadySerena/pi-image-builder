@@ -18,20 +18,20 @@ package media
 
 import (
 	"bytes"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
+	"github.com/spf13/afero"
 	"golang.org/x/sync/errgroup"
 )
 
-func DownloadAndVerifyMedia() error {
+func DownloadAndVerifyMedia(fileSystem afero.Fs) error {
 
 	client := http.Client{
 		Timeout: time.Minute * 5,
@@ -42,63 +42,73 @@ func DownloadAndVerifyMedia() error {
 
 	group := new(errgroup.Group)
 	group.Go(func() error {
-		return DownloadFile(&client, mediaName, fmt.Sprintf("http://os.archlinuxarm.org/os/%s", mediaName))
+		return DownloadFile(&client, fileSystem, mediaName, fmt.Sprintf("http://os.archlinuxarm.org/os/%s", mediaName))
 	})
 	group.Go(func() error {
-		return DownloadFile(&client, checksumName, fmt.Sprintf("http://os.archlinuxarm.org/os/%s", checksumName))
+		return DownloadFile(&client, fileSystem, checksumName, fmt.Sprintf("http://os.archlinuxarm.org/os/%s", checksumName))
 	})
 	if waitErr := group.Wait(); waitErr != nil {
 		return waitErr
 	}
-	media, mediaErr := os.Open(mediaName)
+	media, mediaErr := afero.ReadFile(fileSystem, mediaName)
 	if mediaErr != nil {
 		return mediaErr
 	}
-	hash := md5.New()
-	// media is read and hashed because the hash type implements the io.writer interface
-	if _, copyErr := io.Copy(hash, media); copyErr != nil {
+	checksum, checksumOpenErr := afero.ReadFile(fileSystem, checksumName)
+	if checksumOpenErr != nil {
+		return checksumOpenErr
+	}
+
+	return ValidateHashes(media, checksum)
+}
+
+func DownloadFile(client *http.Client, fileSystem afero.Fs, fileName string, url string) error {
+	media, mediaErr := fileSystem.Create(fileName)
+	if mediaErr != nil {
+		return mediaErr
+	}
+	defer wrappedClose(media)
+
+	mediaResponse, mediaDownloadErr := client.Get(url)
+	if mediaDownloadErr != nil {
+		return mediaDownloadErr
+	}
+	defer wrappedClose(mediaResponse.Body)
+
+	_, copyErr := io.Copy(media, mediaResponse.Body)
+	if copyErr != nil {
 		return copyErr
 	}
-	foo := hex.EncodeToString(hash.Sum(nil))
+	return nil
+}
 
-	checksum, readErr := os.ReadFile(checksumName)
-	if readErr != nil {
-		return readErr
+func ValidateHashes(mediaBytes []byte, md5fileBytes []byte) error {
+	hash := md5.New() //nolint:gosec
+	if _, hashErr := hash.Write(mediaBytes); hashErr != nil {
+		return hashErr
 	}
-	foo2 := bytes.Split(checksum, []byte(" "))
-
-	if foo != string(foo2[0]) {
+	sum := hash.Sum(nil)
+	mediaHash := hex.EncodeToString(sum)
+	checksum, extractErr := extractChecksum(md5fileBytes)
+	if extractErr != nil {
+		return extractErr
+	}
+	if mediaHash != checksum {
 		return errors.New("checksums do not match")
 	}
 	return nil
 }
 
-func DownloadFile(client *http.Client, fileName string, url string) error {
-	media, mediaErr := os.Create(fileName)
-	if mediaErr != nil {
-		log.Fatalf("could not create file: %v", mediaErr)
+func extractChecksum(fileBytes []byte) (string, error) {
+	split := bytes.Split(fileBytes, []byte(" "))
+	if len(split) != 3 {
+		return "", errors.New("length mismatch check file format")
 	}
-	defer func(media *os.File) {
-		err := media.Close()
-		if err != nil {
-			log.Fatalf("could not close file properly: %v", err)
-		}
-	}(media)
+	return string(split[0]), nil
+}
 
-	mediaResponse, mediaDownloadErr := client.Get(url)
-	if mediaDownloadErr != nil {
-		log.Fatalf("could not download file: %v", mediaDownloadErr)
+func wrappedClose(closer io.Closer) {
+	if err := closer.Close(); err != nil {
+		log.Fatalf("could not close closer properly: %v", err)
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			log.Fatalf("could not close body properly: %v", err)
-		}
-	}(mediaResponse.Body)
-
-	_, copyErr := io.Copy(media, mediaResponse.Body)
-	if copyErr != nil {
-		log.Fatalf("could not copy http body to filesystem: %v", copyErr)
-	}
-	return nil
 }

@@ -20,11 +20,12 @@ import (
 	"log"
 
 	"github.com/LadySerena/pi-image-builder/media"
+	"github.com/spf13/afero"
 )
 
 // steps
-//grab install media
-// verify checksum
+// * grab install media
+// * verify checksum
 // allocate file
 // setup loop device
 // mount file on loop device
@@ -40,8 +41,8 @@ import (
 // undo dns changes
 
 func main() {
-
-	err := media.DownloadAndVerifyMedia()
+	localFS := afero.NewOsFs()
+	err := media.DownloadAndVerifyMedia(localFS)
 	if err != nil {
 		log.Fatalf("error with downloading media: %v", err)
 	}
