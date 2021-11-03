@@ -25,4 +25,5 @@ gen
 
 pi-image-builder
 *.tar*
+*.img
 
