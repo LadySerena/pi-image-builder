@@ -28,7 +28,7 @@ import (
 // steps
 // * grab install media
 // * verify checksum
-// allocate file
+// * allocate file
 // setup loop device
 // mount file on loop device
 // partition device
