@@ -18,7 +18,9 @@ package main
 
 import (
 	"log"
+	"time"
 
+	"github.com/LadySerena/pi-image-builder/image"
 	"github.com/LadySerena/pi-image-builder/media"
 	"github.com/spf13/afero"
 )
@@ -42,9 +44,12 @@ import (
 
 func main() {
 	localFS := afero.NewOsFs()
-	err := media.DownloadAndVerifyMedia(localFS)
+	err := media.DownloadAndVerifyMedia(localFS, false)
 	if err != nil {
 		log.Fatalf("error with downloading media: %v", err)
 	}
-
+	allocateErr := image.AllocateFile(time.Now())
+	if allocateErr != nil {
+		log.Fatalf("error with allocating file: %v", allocateErr)
+	}
 }

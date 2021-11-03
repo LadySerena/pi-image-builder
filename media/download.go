@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"time"
@@ -31,7 +32,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func DownloadAndVerifyMedia(fileSystem afero.Fs) error {
+func DownloadAndVerifyMedia(fileSystem afero.Fs, forceOverwrite bool) error {
 
 	client := http.Client{
 		Timeout: time.Minute * 5,
@@ -40,16 +41,22 @@ func DownloadAndVerifyMedia(fileSystem afero.Fs) error {
 	mediaName := "ArchLinuxARM-rpi-aarch64-latest.tar.gz"
 	checksumName := fmt.Sprintf("%s.md5", mediaName)
 
-	group := new(errgroup.Group)
-	group.Go(func() error {
-		return DownloadFile(&client, fileSystem, mediaName, fmt.Sprintf("http://os.archlinuxarm.org/os/%s", mediaName))
-	})
-	group.Go(func() error {
-		return DownloadFile(&client, fileSystem, checksumName, fmt.Sprintf("http://os.archlinuxarm.org/os/%s", checksumName))
-	})
-	if waitErr := group.Wait(); waitErr != nil {
-		return waitErr
+	_, mediaStatErr := fileSystem.Stat(mediaName)
+	_, checksumStatErr := fileSystem.Stat(checksumName)
+
+	if needsToDownload(forceOverwrite, mediaStatErr, checksumStatErr) {
+		group := new(errgroup.Group)
+		group.Go(func() error {
+			return DownloadFile(&client, fileSystem, mediaName, fmt.Sprintf("http://os.archlinuxarm.org/os/%s", mediaName))
+		})
+		group.Go(func() error {
+			return DownloadFile(&client, fileSystem, checksumName, fmt.Sprintf("http://os.archlinuxarm.org/os/%s", checksumName))
+		})
+		if waitErr := group.Wait(); waitErr != nil {
+			return waitErr
+		}
 	}
+
 	media, mediaErr := afero.ReadFile(fileSystem, mediaName)
 	if mediaErr != nil {
 		return mediaErr
@@ -60,6 +67,10 @@ func DownloadAndVerifyMedia(fileSystem afero.Fs) error {
 	}
 
 	return ValidateHashes(media, checksum)
+}
+
+func needsToDownload(force bool, mediaErr error, checksumErr error) bool {
+	return force || (errors.Is(mediaErr, fs.ErrNotExist) || errors.Is(checksumErr, fs.ErrNotExist))
 }
 
 func DownloadFile(client *http.Client, fileSystem afero.Fs, fileName string, url string) error {
