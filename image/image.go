@@ -22,9 +22,9 @@ import (
 	"time"
 )
 
-func AllocateFile(timestamp time.Time) error {
+func AllocateFile(timestamp time.Time) (string, error) {
 	year, month, day := timestamp.Date()
 	filename := fmt.Sprintf("arch-linux-arm-%d-%02d-%02d.img", year, int(month), day)
 	cmd := exec.Command("fallocate", "-l", "4G", filename)
-	return cmd.Run()
+	return filename, cmd.Run()
 }

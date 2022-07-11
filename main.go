@@ -18,9 +18,7 @@ package main
 
 import (
 	"log"
-	"time"
 
-	"github.com/LadySerena/pi-image-builder/image"
 	"github.com/LadySerena/pi-image-builder/media"
 	"github.com/spf13/afero"
 )
@@ -48,8 +46,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("error with downloading media: %v", err)
 	}
-	allocateErr := image.AllocateFile(time.Now())
-	if allocateErr != nil {
-		log.Fatalf("error with allocating file: %v", allocateErr)
+
+	_, decompressErr := media.ExtractImage()
+	if decompressErr != nil {
+		log.Fatalf("error decompressing image: %s", decompressErr)
 	}
+	truncateErr := media.ExpandSize()
+	if truncateErr != nil {
+		log.Fatalf("error expanding image size: %s", truncateErr)
+	}
+
+	device, mountFileErr := media.MountImage()
+	if mountFileErr != nil {
+		log.Fatalf("error mounting image: %s", mountFileErr)
+	}
+	
 }
