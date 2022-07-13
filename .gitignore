@@ -27,3 +27,6 @@ pi-image-builder
 *.tar*
 *.img
 
+*.xz
+SHA256SUMS
+

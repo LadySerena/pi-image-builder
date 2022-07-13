@@ -19,9 +19,12 @@ package media
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 
 	"github.com/c2h5oh/datasize"
 )
@@ -57,33 +60,52 @@ type PartitionEntry struct {
 	Start      datasize.ByteSize
 	End        datasize.ByteSize
 	Size       datasize.ByteSize
-	Type       string
 	FileSystem string
-	Flags      *string
 }
 
-// todo finish parsing this mess
-//$ sudo parted /dev/loop5 print -m -s
-//BYT;
-///dev/loop5:4536MB:loopback:512:512:msdos:Loopback device:;
-//1:1049kB:269MB:268MB:fat32::boot, lba;
-//2:269MB:3488MB:3218MB:ext4::;
-//(⎈ |serena@kubernetes:default)serena@serena-desktop:~/repos/pi-image-builder ‹serena/ubuntu›
-//$ sudo parted /dev/loop5 print
-//Model: Loopback device (loopback)
-//Disk /dev/loop5: 4536MB
-//Sector size (logical/physical): 512B/512B
-//Partition Table: msdos
-//Disk Flags:
-//
-//Number  Start   End     Size    Type     File system  Flags
-//1      1049kB  269MB   268MB   primary  fat32        boot, lba
-//2      269MB   3488MB  3218MB  primary  ext4
+func parsePartedOutput(output []byte) (PartitionEntry, error) {
 
-func parsePartedOutput(output []byte) PartitionEntry {
 	lines := bytes.Split(output, []byte("\n"))
+	for _, line := range lines {
+		split := bytes.Split(line, []byte(":"))
+		// todo extract to constant
+		if len(split) != 7 {
+			continue
+		}
+		// todo extract to constant
+		fileSystem := split[4]
+		if bytes.Equal(fileSystem, []byte("ext4")) {
+			number, conversionErr := strconv.Atoi(string(split[0]))
+			if conversionErr != nil {
+				return PartitionEntry{}, conversionErr
+			}
 
-	return PartitionEntry{}
+			start, startErr := datasize.Parse(split[1])
+			if startErr != nil {
+				return PartitionEntry{}, startErr
+			}
+
+			end, endErr := datasize.Parse(split[2])
+			if endErr != nil {
+				return PartitionEntry{}, endErr
+			}
+
+			size, sizeErr := datasize.Parse(split[3])
+			if sizeErr != nil {
+				return PartitionEntry{}, sizeErr
+			}
+
+			return PartitionEntry{
+				Number:     uint64(number),
+				Start:      start,
+				End:        end,
+				Size:       size,
+				FileSystem: string(fileSystem),
+			}, nil
+		}
+	}
+
+	return PartitionEntry{}, nil
 }
 
 func ExtractImage() (string, error) {
@@ -129,7 +151,12 @@ func ExpandSize() error {
 }
 
 func MountImage() (Entry, error) {
-	loopCreateCommand := exec.Command("sudo", "losetup", "-Pf", extractName)
+
+	path, pathErr := filepath.Abs(extractName)
+	if pathErr != nil {
+		return Entry{}, pathErr
+	}
+	loopCreateCommand := exec.Command("sudo", "losetup", "-Pf", path)
 	loopErr := loopCreateCommand.Run()
 	if loopErr != nil {
 		return Entry{}, loopErr
@@ -154,15 +181,49 @@ func MountImage() (Entry, error) {
 	}
 	devices := parsedOutput.ToMap()
 
-	return devices[extractName], nil
+	return devices[path], nil
 
 }
 
-func FileSystemExpansion(device Entry) {
-	partitionCommand := exec.Command("sudo", "parted", device.Name, "print", "-m", "-s")
+func FileSystemExpansion(device Entry) error {
+	partitionCommand := exec.Command("sudo", "parted", device.Name, "print", "-m", "-s") //nolint:gosec
 	output, pipeCreateErr := partitionCommand.StdoutPipe()
 	if pipeCreateErr != nil {
-		return
+		return nil
+	}
+	if err := partitionCommand.Start(); err != nil {
+		return nil
+	}
+	partitions, readErr := io.ReadAll(output)
+	if readErr != nil {
+		return nil
+	}
+	if err := partitionCommand.Wait(); err != nil {
+		return nil
+	}
+	partition, parseErr := parsePartedOutput(partitions)
+	if parseErr != nil {
+		return parseErr
 	}
 
+	// todo figure out how to fix resizing the partition (end is outside of the bounds of the partition)
+	end := strconv.FormatUint(partition.End.Bytes(), 10)
+
+	resizePartition := exec.Command("sudo", "parted", device.Name, "resizepart", strconv.FormatUint(partition.Number, 10), end, "-s") //nolint:gosec
+	if err := resizePartition.Run(); err != nil {
+		return err
+	}
+
+	partitionName := fmt.Sprintf("%sp%d", device.Name, partition.Number)
+
+	fsCheck := exec.Command("sudo", "e2fsck", "-pf", partitionName) //nolint:gosec
+	if err := fsCheck.Run(); err != nil {
+		return err
+	}
+
+	resizeFS := exec.Command("sudo", "resize2fs", partitionName) //nolint:gosec
+	if err := resizeFS.Run(); err != nil {
+		return err
+	}
+	return nil
 }

@@ -60,5 +60,7 @@ func main() {
 	if mountFileErr != nil {
 		log.Fatalf("error mounting image: %s", mountFileErr)
 	}
-	
+
+	media.FileSystemExpansion(device)
+
 }
