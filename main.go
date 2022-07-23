@@ -42,8 +42,8 @@ import (
 
 func main() {
 	localFS := afero.NewOsFs()
-	err := media.DownloadAndVerifyMedia(localFS, false)
-	if err != nil {
+
+	if err := media.DownloadAndVerifyMedia(localFS, false); err != nil {
 		log.Fatalf("error with downloading media: %v", err)
 	}
 
@@ -56,11 +56,21 @@ func main() {
 		log.Fatalf("error expanding image size: %s", truncateErr)
 	}
 
-	device, mountFileErr := media.MountImage()
+	device, mountFileErr := media.MountImageToDevice()
 	if mountFileErr != nil {
 		log.Fatalf("error mounting image: %s", mountFileErr)
 	}
 
-	media.FileSystemExpansion(device)
+	if err := media.FileSystemExpansion(device); err != nil {
+		log.Fatalf("error expanding file system: %v", err)
+	}
+
+	if err := media.AttachToMountPoint(localFS, device); err != nil {
+		log.Fatalf("error mounting image: %v", err)
+	}
+
+	if err := media.Cleanup(localFS, device); err != nil {
+		log.Fatalf("error cleaning up resources: %v", err)
+	}
 
 }

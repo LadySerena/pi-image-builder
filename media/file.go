@@ -27,10 +27,18 @@ import (
 	"strconv"
 
 	"github.com/c2h5oh/datasize"
+	"github.com/spf13/afero"
 )
 
-const extractName = "ubuntu-20.04.4-preinstalled-server-arm64+raspi.img"
-const expectedSize = 4 * datasize.GB
+const (
+	extractName         = "ubuntu-20.04.4-preinstalled-server-arm64+raspi.img"
+	expectedSize        = 4 * datasize.GB
+	resolvConf          = "/etc/resolv.conf"
+	rootMountPoint      = "./mnt"
+	bootMountPoint      = "./mnt/boot/firmware"
+	mountedResolv       = "./mnt/etc/resolv.conf"
+	mountedResolvBackup = "./mnt/etc/resolve.conf.bak"
+)
 
 type DeviceOutput struct {
 	Loopdevices []Entry `json:"loopdevices"`
@@ -150,13 +158,13 @@ func ExpandSize() error {
 	return file.Truncate(newSize)
 }
 
-func MountImage() (Entry, error) {
+func MountImageToDevice() (Entry, error) {
 
 	path, pathErr := filepath.Abs(extractName)
 	if pathErr != nil {
 		return Entry{}, pathErr
 	}
-	loopCreateCommand := exec.Command("sudo", "losetup", "-Pf", path)
+	loopCreateCommand := exec.Command("losetup", "-Pf", path)
 	loopErr := loopCreateCommand.Run()
 	if loopErr != nil {
 		return Entry{}, loopErr
@@ -186,7 +194,7 @@ func MountImage() (Entry, error) {
 }
 
 func FileSystemExpansion(device Entry) error {
-	partitionCommand := exec.Command("sudo", "parted", device.Name, "print", "-m", "-s") //nolint:gosec
+	partitionCommand := exec.Command("parted", "-s", "-m", device.Name, "--", "unit", "B", "print") //nolint:gosec
 	output, pipeCreateErr := partitionCommand.StdoutPipe()
 	if pipeCreateErr != nil {
 		return nil
@@ -206,24 +214,85 @@ func FileSystemExpansion(device Entry) error {
 		return parseErr
 	}
 
-	// todo figure out how to fix resizing the partition (end is outside of the bounds of the partition)
-	end := strconv.FormatUint(partition.End.Bytes(), 10)
+	end := fmt.Sprintf("%dB", partition.End.Bytes())
 
-	resizePartition := exec.Command("sudo", "parted", device.Name, "resizepart", strconv.FormatUint(partition.Number, 10), end, "-s") //nolint:gosec
+	resizePartition := exec.Command("parted", device.Name, "resizepart", strconv.FormatUint(partition.Number, 10), end, "-s") //nolint:gosec
 	if err := resizePartition.Run(); err != nil {
 		return err
 	}
 
 	partitionName := fmt.Sprintf("%sp%d", device.Name, partition.Number)
 
-	fsCheck := exec.Command("sudo", "e2fsck", "-pf", partitionName) //nolint:gosec
+	fsCheck := exec.Command("e2fsck", "-pf", partitionName) //nolint:gosec
 	if err := fsCheck.Run(); err != nil {
 		return err
 	}
 
-	resizeFS := exec.Command("sudo", "resize2fs", partitionName) //nolint:gosec
+	resizeFS := exec.Command("resize2fs", partitionName) //nolint:gosec
 	if err := resizeFS.Run(); err != nil {
 		return err
 	}
+	return nil
+}
+
+func AttachToMountPoint(fileSystem afero.Fs, device Entry) error {
+
+	if err := fileSystem.MkdirAll(bootMountPoint, 0751); err != nil {
+		return err
+	}
+
+	// todo get more info about the partition layout instead of hard coding
+	if err := exec.Command("mount", fmt.Sprintf("%sp2", device.Name), rootMountPoint).Run(); err != nil { //nolint:gosec
+		return err
+	}
+
+	if err := exec.Command("mount", fmt.Sprintf("%sp1", device.Name), bootMountPoint).Run(); err != nil { //nolint:gosec
+		return err
+	}
+
+	fileInfo, err := fileSystem.Stat(resolvConf)
+	if err != nil {
+		return err
+	}
+
+	// TODO doesn't work because ./mnt/etc/resolv.conf is a symlink to ../run/systemd/resolve/stub-resolv.conf
+	// TODO maybe look at os.LStat ?
+	if err := fileSystem.Rename(mountedResolv, mountedResolvBackup); err != nil {
+		return err
+	}
+
+	resolve, readErr := afero.ReadFile(fileSystem, resolvConf)
+	if readErr != nil {
+		return readErr
+	}
+
+	if err := afero.WriteFile(fileSystem, mountedResolv, resolve, fileInfo.Mode()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func Cleanup(fileSystem afero.Fs, device Entry) error {
+	if err := fileSystem.Remove(mountedResolv); err != nil {
+		return err
+	}
+
+	if err := fileSystem.Rename(mountedResolvBackup, mountedResolv); err != nil {
+		return err
+	}
+
+	if err := exec.Command("umount", bootMountPoint).Run(); err != nil {
+		return err
+	}
+
+	if err := exec.Command("umount", rootMountPoint).Run(); err != nil {
+		return err
+	}
+
+	if err := exec.Command("losetup", "--detach", device.Name).Run(); err != nil { //nolint:gosec
+		return err
+	}
+
 	return nil
 }
