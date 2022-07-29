@@ -250,14 +250,16 @@ func AttachToMountPoint(fileSystem afero.Fs, device Entry) error {
 		return err
 	}
 
+	if err := os.Symlink("../run/systemd/resolve/stub-resolv.conf", mountedResolvBackup); err != nil {
+		return err
+	}
+
 	fileInfo, err := fileSystem.Stat(resolvConf)
 	if err != nil {
 		return err
 	}
 
-	// TODO doesn't work because ./mnt/etc/resolv.conf is a symlink to ../run/systemd/resolve/stub-resolv.conf
-	// TODO maybe look at os.LStat ?
-	if err := fileSystem.Rename(mountedResolv, mountedResolvBackup); err != nil {
+	if err := fileSystem.Remove(mountedResolv); err != nil {
 		return err
 	}
 
@@ -278,7 +280,11 @@ func Cleanup(fileSystem afero.Fs, device Entry) error {
 		return err
 	}
 
-	if err := fileSystem.Rename(mountedResolvBackup, mountedResolv); err != nil {
+	if err := os.Symlink("../run/systemd/resolve/stub-resolv.conf", mountedResolv); err != nil {
+		return err
+	}
+
+	if err := os.Remove(mountedResolvBackup); err != nil {
 		return err
 	}
 
