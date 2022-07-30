@@ -20,10 +20,10 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 
+	"github.com/LadySerena/pi-image-builder/utility"
 	"github.com/spf13/afero"
 )
 
@@ -117,34 +117,19 @@ func KernelSettings(fs afero.Fs) error {
 	if fsOpenErr != nil {
 		return fsOpenErr
 	}
-	defer func(compressedKernelImage afero.File) {
-		err := compressedKernelImage.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(compressedKernelImage)
+	defer utility.WrappedClose(compressedKernelImage)
 
 	decompressedKernelImage, openErr := fs.OpenFile("/boot/firmware/vmlinux", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if openErr != nil {
 		return openErr
 	}
-	defer func(decompressedKernelImage afero.File) {
-		err := decompressedKernelImage.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(decompressedKernelImage)
+	defer utility.WrappedClose(decompressedKernelImage)
 
 	reader, readerErr := gzip.NewReader(compressedKernelImage)
 	if readerErr != nil {
 		return readerErr
 	}
-	defer func(reader *gzip.Reader) {
-		err := reader.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(reader)
+	defer utility.WrappedClose(reader)
 
 	buffer, decompressErr := io.ReadAll(reader)
 	if decompressErr != nil {
@@ -162,31 +147,6 @@ func KernelSettings(fs afero.Fs) error {
 
 	return nil
 }
-
-//139   │ function k8s-modules() {
-//140   │   cat <<EOF | tee /etc/modules-load.d/k8s.conf
-//141   │ br_netfilter
-//142   │ EOF
-//143   │
-//144   │   cat <<EOF | tee /etc/sysctl.d/k8s.conf
-//145   │ net.bridge.bridge-nf-call-ip6tables = 1
-//146   │ net.bridge.bridge-nf-call-iptables = 1
-//147   │ EOF
-//148   │ }
-//149   │
-//150   │ function containerd-modules() {
-//151   │   cat <<EOF | tee /etc/modules-load.d/containerd.conf
-//152   │   overlay
-//153   │   br_netfilter
-//154   │ EOF
-//155   │
-//156   │   cat <<EOF | tee /etc/sysctl.d/99-kubernetes-cri.conf
-//157   │ net.bridge.bridge-nf-call-iptables  = 1
-//158   │ net.ipv4.ip_forward                 = 1
-//159   │ net.bridge.bridge-nf-call-ip6tables = 1
-//160   │ EOF
-//161   │
-//162   │ }
 
 func KernelModules(fs afero.Fs) error {
 
@@ -214,23 +174,13 @@ func KernelModules(fs afero.Fs) error {
 	if kubernetesErr != nil {
 		return kubernetesErr
 	}
-	defer func(kubernetesFile afero.File) {
-		err := kubernetesFile.Close()
-		if err != nil {
-			log.Fatalf("error closing file: %s due to: %s", kubernetesSysctlPath, err)
-		}
-	}(kubernetesFile)
+	defer utility.WrappedClose(kubernetesFile)
 
 	ciliumFile, ciliumErr := fs.OpenFile(ciliumSysctlPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if ciliumErr != nil {
 		return ciliumErr
 	}
-	defer func(ciliumFile afero.File) {
-		err := ciliumFile.Close()
-		if err != nil {
-			log.Fatalf("error closing file: %s due to: %s", ciliumSysctlPath, err)
-		}
-	}(ciliumFile)
+	defer utility.WrappedClose(ciliumFile)
 
 	if _, err := kubernetesSysctls.Write(kubernetesFile); err != nil {
 		return err

@@ -23,13 +23,13 @@ import (
 	"errors"
 	"io"
 	"io/fs"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"time"
 
+	"github.com/LadySerena/pi-image-builder/utility"
 	"github.com/spf13/afero"
 	"golang.org/x/sync/errgroup"
 )
@@ -90,13 +90,13 @@ func DownloadFile(client *http.Client, fileSystem afero.Fs, fileName string, url
 	if mediaErr != nil {
 		return mediaErr
 	}
-	defer wrappedClose(media)
+	defer utility.WrappedClose(media)
 
 	mediaResponse, mediaDownloadErr := client.Get(url)
 	if mediaDownloadErr != nil {
 		return mediaDownloadErr
 	}
-	defer wrappedClose(mediaResponse.Body)
+	defer utility.WrappedClose(mediaResponse.Body)
 
 	_, copyErr := io.Copy(media, mediaResponse.Body)
 	if copyErr != nil {
@@ -134,10 +134,4 @@ func extractChecksum(fileBytes []byte) (map[string][]byte, error) {
 		sums[string(lineSplit[1])] = lineSplit[0]
 	}
 	return sums, nil
-}
-
-func wrappedClose(closer io.Closer) {
-	if err := closer.Close(); err != nil {
-		log.Fatalf("could not close closer properly: %v", err)
-	}
 }

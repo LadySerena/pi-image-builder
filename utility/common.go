@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Serena Tiede
+ * Copyright (c) 2022 Serena Tiede
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,17 +14,15 @@
  * limitations under the License.
  */
 
-package image
+package utility
 
 import (
-	"fmt"
-	"os/exec"
-	"time"
+	"io"
+	"log"
 )
 
-func AllocateFile(timestamp time.Time) (string, error) {
-	year, month, day := timestamp.Date()
-	filename := fmt.Sprintf("arch-linux-arm-%d-%02d-%02d.img", year, int(month), day)
-	cmd := exec.Command("fallocate", "-l", "4G", filename)
-	return filename, cmd.Run()
+func WrappedClose(closer io.Closer) {
+	if err := closer.Close(); err != nil {
+		log.Panicf("could not close closer properly: %v", err)
+	}
 }

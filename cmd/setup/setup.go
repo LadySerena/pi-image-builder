@@ -81,4 +81,8 @@ func main() {
 	if err := configure.KernelSettings(mountedFs); err != nil {
 		log.Panicf("error configuring kernel settings: %v", err)
 	}
+
+	if err := configure.Packages(mountedFs); err != nil {
+		log.Panicf("error installing packages: %v", err)
+	}
 }
