@@ -82,7 +82,15 @@ func main() {
 		log.Panicf("error configuring kernel settings: %v", err)
 	}
 
+	if err := configure.KernelModules(mountedFs); err != nil {
+		log.Panicf("error configuring modules and sysctls: %v", err)
+	}
+
 	if err := configure.Packages(mountedFs); err != nil {
 		log.Panicf("error installing packages: %v", err)
+	}
+
+	if err := configure.InstallKubernetes(mountedFs, "v1.24.3", "v1.24.2", "v1.1.1", "v0.4.0"); err != nil {
+		log.Panicf("error installing Kubernetes: %s", err)
 	}
 }

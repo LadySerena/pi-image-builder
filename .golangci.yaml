@@ -2,8 +2,10 @@ run:
   go: '1.18'
   skip-dirs:
     - "mnt/"
+    - "old-image/"
   skip-files:
     - "mnt/*"
+    - "old-image/*"
 linters:
   enable:
     - deadcode
