@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"time"
 
 	"github.com/LadySerena/pi-image-builder/utility"
@@ -47,6 +48,7 @@ Suites: %s
 Components: %s
 Architectures: %s
 `
+	mount = "./mnt"
 )
 
 type ErrStatusCode struct {
@@ -87,7 +89,6 @@ func RunInContainer(mount string, args ...string) *exec.Cmd {
 }
 
 func Packages(fs afero.Fs) error {
-	mount := "./mnt"
 	basePackages := []string{
 		"openssh-server",
 		"ca-certificates",
@@ -243,7 +244,27 @@ func InstallKubernetes(fs afero.Fs, kubernetesVersion string, criCtlVersion stri
 		return err
 	}
 
-	// todo setup systemd service and drop-ins
+	systemdUnit := fmt.Sprintf(kubeletSystemdService, path.Join(downloadDir, "kubelet"))
+	dropIn := fmt.Sprintf(dropInSystemdConfig, path.Join(downloadDir, "kubelet"))
+
+	systemdBuffer := bytes.NewBufferString(systemdUnit)
+	dropInBuffer := bytes.NewBufferString(dropIn)
+
+	if err := IdempotentWrite(fs, systemdBuffer, "/etc/systemd/system/kubelet.service", 0644); err != nil {
+		return err
+	}
+
+	if err := fs.MkdirAll("/etc/systemd/system/kubelet.service.d", 0755); err != nil {
+		return err
+	}
+
+	if err := IdempotentWrite(fs, dropInBuffer, "/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", 0644); err != nil {
+		return err
+	}
+
+	if err := RunInContainer(mount, "systemctl", "enable", "kubelet").Run(); err != nil {
+		return err
+	}
 
 	return nil
 }

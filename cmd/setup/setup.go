@@ -93,4 +93,7 @@ func main() {
 	if err := configure.InstallKubernetes(mountedFs, "v1.24.3", "v1.24.2", "v1.1.1", "v0.4.0"); err != nil {
 		log.Panicf("error installing Kubernetes: %s", err)
 	}
+
+	// TODO compress file with zstd and upload to gcs
+	// TODO add cloudinit config
 }
