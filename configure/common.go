@@ -16,6 +16,11 @@
 
 package configure
 
+import "embed"
+
+//go:embed files/*
+var configFiles embed.FS
+
 // TODO use https://pkg.go.dev/embed@master and templates instead of format strings
 const (
 	commandLine    = "dwc_otg.lpm_enable=0 console=serial0,115200 console=tty1 root=LABEL=writable rootfstype=ext4 elevator=deadline rootwait fixrtc quiet splash cgroup_enable=memory swapaccount=1 cgroup_memory=1 cgroup_enable=cpuset"
@@ -25,46 +30,6 @@ dtoverlay=vc4-fkms-v3d
 boot_delay
 kernel=vmlinux
 initramfs initrd.img followkernel
-`
-	decompressKernel = `#!/bin/bash -e
-# auto_decompress_kernel script
-BTPATH=/boot/firmware
-CKPATH=$BTPATH/vmlinuz
-DKPATH=$BTPATH/vmlinux
-# Check if compression needs to be done.
-if [ -e $BTPATH/check.md5 ]; then
-   if md5sum --status --ignore-missing -c $BTPATH/check.md5; then
-      echo -e "\e[32mFiles have not changed, Decompression not needed\e[0m"
-      exit 0
-   else
-      echo -e "\e[31mHash failed, kernel will be compressed\e[0m"
-   fi
-fi
-# Backup the old decompressed kernel
-mv $DKPATH $DKPATH.bak
-if [ ! $? == 0 ]; then
-   echo -e "\e[31mDECOMPRESSED KERNEL BACKUP FAILED!\e[0m"
-   exit 1
-else
-   echo -e "\e[32mDecompressed kernel backup was successful\e[0m"
-fi
-# Decompress the new kernel
-echo "Decompressing kernel: "$CKPATH".............."
-zcat -qf $CKPATH > $DKPATH
-if [ ! $? == 0 ]; then
-   echo -e "\e[31mKERNEL FAILED TO DECOMPRESS!\e[0m"
-   exit 1
-else
-   echo -e "\e[32mKernel Decompressed Succesfully\e[0m"
-fi
-# Hash the new kernel for checking
-md5sum $CKPATH $DKPATH > $BTPATH/check.md5
-if [ ! $? == 0 ]; then
-   echo -e "\e[31mMD5 GENERATION FAILED!\e[0m"
-else
-   echo -e "\e[32mMD5 generated Succesfully\e[0m"
-fi
-exit 0
 `
 	postInvoke = `DPkg::Post-Invoke {"/bin/bash /boot/auto_decompress_kernel"; };`
 

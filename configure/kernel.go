@@ -48,15 +48,28 @@ func (s Sysctl) Write(writer io.Writer) (int, error) {
 
 func KernelSettings(fs afero.Fs) error {
 
+	decompressKernel, decompressErr := configFiles.Open("files/decompressKernel.bash")
+	if decompressErr != nil {
+		return decompressErr
+	}
+
+	defer utility.WrappedClose(decompressKernel)
+
 	if err := IdempotentWrite(fs, bytes.NewBufferString(commandLine), commandLinePath, 0755); err != nil {
 		return err
 	}
 
-	if err := IdempotentWrite(fs, bytes.NewBufferString(decompressKernel), "/boot/auto_decompress_kernel", 0544); err != nil {
+	if err := IdempotentWrite(fs, decompressKernel, "/boot/auto_decompress_kernel", 0544); err != nil {
 		return err
 	}
 
-	if err := IdempotentWrite(fs, bytes.NewBufferString(firmwareConfig), "/boot/firmware/usercfg.txt", 0755); err != nil {
+	firmwareConfigFile, firmwareConfigErr := configFiles.Open("files/firmwareConfig")
+	if firmwareConfigErr != nil {
+		return firmwareConfigErr
+	}
+	defer utility.WrappedClose(firmwareConfigFile)
+
+	if err := IdempotentWrite(fs, firmwareConfigFile, "/boot/firmware/usercfg.txt", 0755); err != nil {
 		return err
 	}
 

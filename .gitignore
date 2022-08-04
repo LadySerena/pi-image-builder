@@ -30,4 +30,5 @@ pi-image-builder
 *.xz
 SHA256SUMS
 mnt
-
+setup
+!cmd/setup/setup.go

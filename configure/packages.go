@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"text/template"
 	"time"
 
 	"github.com/LadySerena/pi-image-builder/utility"
@@ -78,6 +79,7 @@ func (e ErrStatusCode) Error() string {
 	return fmt.Sprintf("expected http code: %d, got %d instead", e.expectedCode, e.statusCode)
 }
 
+// deprecated: Write this method is brittle and there is a better go template solution
 func (r Deb822Repo) Write(w io.Writer) (int, error) {
 	repoString := fmt.Sprintf(repoString, r.Types, r.URIs, r.Suites, r.Components, r.Arch)
 	return w.Write([]byte(repoString))
@@ -127,6 +129,11 @@ func Packages(fs afero.Fs) error {
 		return err
 	}
 
+	dockerRepoTemplate, templateErr := template.New("Deb822.template").ParseFS(configFiles, "files/Deb822.template")
+	if templateErr != nil {
+		return templateErr
+	}
+
 	dockerRepo := Deb822Repo{
 		Types:      "deb",
 		URIs:       "https://download.docker.com/linux/ubuntu",
@@ -137,7 +144,7 @@ func Packages(fs afero.Fs) error {
 
 	var repoBuffer bytes.Buffer
 
-	if _, err := dockerRepo.Write(&repoBuffer); err != nil {
+	if err := dockerRepoTemplate.Execute(&repoBuffer, dockerRepo); err != nil {
 		return err
 	}
 
@@ -300,6 +307,7 @@ func ExtractTarGz(fs afero.Fs, r io.Reader) error {
 	return nil
 }
 
+// todo diff what's written and what is in the reader
 func IdempotentWrite(fs afero.Fs, reader io.Reader, path string, mode os.FileMode) error {
 	file, fileOpenErr := fs.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 	if fileOpenErr != nil && !errors.Is(fileOpenErr, os.ErrExist) {
