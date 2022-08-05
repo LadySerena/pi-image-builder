@@ -27,7 +27,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"text/template"
 	"time"
 
 	"github.com/LadySerena/pi-image-builder/utility"
@@ -67,6 +66,10 @@ type KubernetesDownload struct {
 	arch    string
 }
 
+type KubernetesSystemd struct {
+	KubeletPath string
+}
+
 func NewKubernetesDownload(name string, version string, arch string) *KubernetesDownload {
 	return &KubernetesDownload{name: name, version: version, arch: arch}
 }
@@ -79,15 +82,26 @@ func (e ErrStatusCode) Error() string {
 	return fmt.Sprintf("expected http code: %d, got %d instead", e.expectedCode, e.statusCode)
 }
 
-// deprecated: Write this method is brittle and there is a better go template solution
+// Deprecated: Write this method is brittle and there is a better go template solution
 func (r Deb822Repo) Write(w io.Writer) (int, error) {
 	repoString := fmt.Sprintf(repoString, r.Types, r.URIs, r.Suites, r.Components, r.Arch)
 	return w.Write([]byte(repoString))
 }
 
-func RunInContainer(mount string, args ...string) *exec.Cmd {
+func RunCommandWithOutput(cmd *exec.Cmd) error {
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("non zero exit code exit code: %v, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+func NspawnCommand(mount string, args ...string) *exec.Cmd {
 	prepend := append([]string{"-D", mount}, args...)
-	return exec.Command("systemd-nspawn", prepend...)
+	command := exec.Command("systemd-nspawn", prepend...)
+	return command
 }
 
 func Packages(fs afero.Fs) error {
@@ -109,11 +123,11 @@ func Packages(fs afero.Fs) error {
 		"conntrack",
 	}
 
-	if err := RunInContainer(mount, "apt-get", "update").Run(); err != nil {
+	if err := RunCommandWithOutput(NspawnCommand(mount, "apt-get", "update")); err != nil {
 		return err
 	}
 
-	if err := RunInContainer(mount, append([]string{"apt-get", "install", "-y"}, basePackages...)...).Run(); err != nil {
+	if err := RunCommandWithOutput(NspawnCommand(mount, append([]string{"apt-get", "install", "-y"}, basePackages...)...)); err != nil {
 		return err
 	}
 
@@ -129,11 +143,6 @@ func Packages(fs afero.Fs) error {
 		return err
 	}
 
-	dockerRepoTemplate, templateErr := template.New("Deb822.template").ParseFS(configFiles, "files/Deb822.template")
-	if templateErr != nil {
-		return templateErr
-	}
-
 	dockerRepo := Deb822Repo{
 		Types:      "deb",
 		URIs:       "https://download.docker.com/linux/ubuntu",
@@ -142,32 +151,36 @@ func Packages(fs afero.Fs) error {
 		Arch:       "arm64",
 	}
 
-	var repoBuffer bytes.Buffer
+	dockerSources, dockerErr := RenderTemplate(configFiles, "files/Deb822.template", dockerRepo)
+	if dockerErr != nil {
+		return dockerErr
+	}
 
-	if err := dockerRepoTemplate.Execute(&repoBuffer, dockerRepo); err != nil {
+	if err := IdempotentWrite(fs, &dockerSources, "/etc/apt/sources.list.d/docker.sources", 0644); err != nil {
 		return err
 	}
 
-	if err := IdempotentWrite(fs, &repoBuffer, "/etc/apt/sources.list.d/docker.sources", 0644); err != nil {
+	if err := RunCommandWithOutput(NspawnCommand(mount, "apt-get", "update")); err != nil {
 		return err
 	}
 
-	if err := RunInContainer(mount, "apt-get", "update").Run(); err != nil {
+	if err := RunCommandWithOutput(NspawnCommand(mount, "apt-get", "install", "-y", "containerd.io")); err != nil {
 		return err
 	}
 
-	if err := RunInContainer(mount, "apt-get", "install", "-y", "containerd.io").Run(); err != nil {
-		return err
+	containerdConfig, containerdErr := configFiles.ReadFile("files/containerd-config.toml")
+	if containerdErr != nil {
+		return containerdErr
 	}
 
-	if err := afero.WriteFile(fs, "/etc/containerd/config.toml", []byte(containerdConfig), 0644); err != nil {
+	if err := afero.WriteFile(fs, "/etc/containerd/config.toml", containerdConfig, 0644); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func InstallKubernetes(fs afero.Fs, kubernetesVersion string, criCtlVersion string, cniVersion string, kubeletSystemdVersion string) error {
+func InstallKubernetes(fs afero.Fs, kubernetesVersion string, criCtlVersion string, cniVersion string) error {
 
 	const arch = "arm64"
 	const cniDir = "/opt/cni/bin/"
@@ -251,13 +264,14 @@ func InstallKubernetes(fs afero.Fs, kubernetesVersion string, criCtlVersion stri
 		return err
 	}
 
-	systemdUnit := fmt.Sprintf(kubeletSystemdService, path.Join(downloadDir, "kubelet"))
-	dropIn := fmt.Sprintf(dropInSystemdConfig, path.Join(downloadDir, "kubelet"))
+	kubeletPath := KubernetesSystemd{KubeletPath: path.Join(downloadDir, "kubelet")}
 
-	systemdBuffer := bytes.NewBufferString(systemdUnit)
-	dropInBuffer := bytes.NewBufferString(dropIn)
+	systemdUnit, systemdErr := RenderTemplate(configFiles, "files/kubelet.service.template", kubeletPath)
+	if systemdErr != nil {
+		return systemdErr
+	}
 
-	if err := IdempotentWrite(fs, systemdBuffer, "/etc/systemd/system/kubelet.service", 0644); err != nil {
+	if err := IdempotentWrite(fs, &systemdUnit, "/etc/systemd/system/kubelet.service", 0644); err != nil {
 		return err
 	}
 
@@ -265,11 +279,49 @@ func InstallKubernetes(fs afero.Fs, kubernetesVersion string, criCtlVersion stri
 		return err
 	}
 
-	if err := IdempotentWrite(fs, dropInBuffer, "/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", 0644); err != nil {
+	dropIn, dropInErr := RenderTemplate(configFiles, "files/kubeadm-drop-in.template", kubeletPath)
+	if dropInErr != nil {
+		return dropInErr
+	}
+
+	if err := IdempotentWrite(fs, &dropIn, "/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", 0644); err != nil {
 		return err
 	}
 
-	if err := RunInContainer(mount, "systemctl", "enable", "kubelet").Run(); err != nil {
+	if err := RunCommandWithOutput(NspawnCommand(mount, "systemctl", "enable", "kubelet")); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ConfigureCloudInit(fs afero.Fs) error {
+
+	cloudInitDropInDir := "/etc/cloud/cloud.cfg.d/"
+	user, userErr := configFiles.Open("files/06_user.cfg.yml")
+	if userErr != nil {
+		return userErr
+	}
+
+	if err := IdempotentWrite(fs, user, path.Join(cloudInitDropInDir, "06_user.cfg"), 0644); err != nil {
+		return err
+	}
+
+	network, networkErr := configFiles.Open("files/07_network.cfg.yml")
+	if networkErr != nil {
+		return networkErr
+	}
+
+	if err := IdempotentWrite(fs, network, path.Join(cloudInitDropInDir, "07_network.cfg"), 0644); err != nil {
+		return err
+	}
+
+	promisc, promiscErr := configFiles.Open("files/promisc.sh")
+	if promiscErr != nil {
+		return promiscErr
+	}
+
+	if err := IdempotentWrite(fs, promisc, "/etc/networkd-dispatcher/routable.d/promisc.sh", 0644); err != nil {
 		return err
 	}
 
@@ -299,7 +351,7 @@ func ExtractTarGz(fs afero.Fs, r io.Reader) error {
 		if fileErr != nil {
 			return fileErr
 		}
-		if _, err := io.Copy(file, tarReader); err != nil {
+		if _, err := io.Copy(file, tarReader); err != nil { //nolint:gosec
 			return err
 		}
 
@@ -307,20 +359,30 @@ func ExtractTarGz(fs afero.Fs, r io.Reader) error {
 	return nil
 }
 
-// todo diff what's written and what is in the reader
 func IdempotentWrite(fs afero.Fs, reader io.Reader, path string, mode os.FileMode) error {
-	file, fileOpenErr := fs.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+
+	incomingData, readErr := io.ReadAll(reader)
+	if readErr != nil {
+		return readErr
+	}
+	file, fileOpenErr := fs.OpenFile(path, os.O_CREATE|os.O_RDWR, mode)
 	if fileOpenErr != nil && !errors.Is(fileOpenErr, os.ErrExist) {
-		// bubble up important error
 		return fileOpenErr
-	} else if errors.Is(fileOpenErr, os.ErrExist) {
-		// file exists so don't worry about it
-		return nil
 	}
 	defer utility.WrappedClose(file)
 
-	if _, err := io.Copy(file, reader); err != nil {
+	currentData, currentErr := io.ReadAll(file)
+	if currentErr != nil {
+		return currentErr
+	}
+
+	if bytes.Equal(incomingData, currentData) {
+		return nil
+	}
+
+	if _, err := file.Write(incomingData); err != nil {
 		return err
 	}
+
 	return nil
 }

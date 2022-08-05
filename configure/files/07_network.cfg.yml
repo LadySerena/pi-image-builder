@@ -1,0 +1,9 @@
+network:
+  ethernets:
+    eth0:
+      dhcp4: true
+      optional: false
+      nameservers:
+        search: [ internal.serenacodes.com ]
+        addresses: [ 8.8.8.8 ]
+  version: 2

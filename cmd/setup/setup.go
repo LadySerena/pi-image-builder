@@ -24,23 +24,6 @@ import (
 	"github.com/spf13/afero"
 )
 
-// steps
-// * grab install media
-// * verify checksum
-// * allocate file
-// setup loop device
-// mount file on loop device
-// partition device
-// create filesystems
-// mount loop devices
-// decompress onto mount point
-// configure temp dns
-// copy binfmt files (if on x86)
-// nspawn into mount
-// do configuration
-// remove binfmt files
-// undo dns changes
-
 func main() {
 	localFS := afero.NewOsFs()
 	mountedFs := afero.NewBasePathFs(localFS, "./mnt")
@@ -90,10 +73,13 @@ func main() {
 		log.Panicf("error installing packages: %v", err)
 	}
 
-	if err := configure.InstallKubernetes(mountedFs, "v1.24.3", "v1.24.2", "v1.1.1", "v0.4.0"); err != nil {
+	if err := configure.InstallKubernetes(mountedFs, "v1.24.3", "v1.24.2", "v1.1.1"); err != nil {
 		log.Panicf("error installing Kubernetes: %s", err)
 	}
 
-	// TODO compress file with zstd and upload to gcs
-	// TODO add cloudinit config
+	if err := configure.ConfigureCloudInit(mountedFs); err != nil {
+		log.Panicf("error configuring cloudinit drop in files: %v", err)
+	}
+
+	// todo compress file with zstd and upload to gcs
 }
