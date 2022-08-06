@@ -25,8 +25,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
 
+	"github.com/LadySerena/pi-image-builder/utility"
 	"github.com/c2h5oh/datasize"
+	"github.com/klauspost/compress/zstd"
 	"github.com/spf13/afero"
 )
 
@@ -275,7 +278,7 @@ func AttachToMountPoint(fileSystem afero.Fs, device Entry) error {
 	return nil
 }
 
-func Cleanup(fileSystem afero.Fs, device Entry) error {
+func CleanupAndCompress(fileSystem afero.Fs, device Entry) error {
 	if err := fileSystem.Remove(mountedResolv); err != nil {
 		return err
 	}
@@ -297,6 +300,36 @@ func Cleanup(fileSystem afero.Fs, device Entry) error {
 	}
 
 	if err := exec.Command("losetup", "--detach", device.Name).Run(); err != nil { //nolint:gosec
+		return err
+	}
+
+	now := time.Now()
+
+	newImageName := fmt.Sprintf("ubuntu-20-04-arm64-%s-%d.img", now.Format("01-02-2006"), now.UnixMilli())
+
+	if err := fileSystem.Rename(extractName, newImageName); err != nil {
+		return err
+	}
+	file, fileErr := fileSystem.Open(newImageName)
+	if fileErr != nil {
+		return fileErr
+	}
+
+	defer utility.WrappedClose(file)
+
+	compressedFile, fileOpenErr := fileSystem.Create(fmt.Sprintf("%s.zstd", newImageName))
+	if fileOpenErr != nil {
+		return fileOpenErr
+	}
+	defer utility.WrappedClose(compressedFile)
+
+	compressor, compressorErr := zstd.NewWriter(compressedFile, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
+	if compressorErr != nil {
+		return compressorErr
+	}
+	defer utility.WrappedClose(compressor)
+
+	if _, err := io.Copy(compressor, file); err != nil {
 		return err
 	}
 

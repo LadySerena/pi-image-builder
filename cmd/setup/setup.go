@@ -47,10 +47,11 @@ func main() {
 	}
 
 	defer func(fileSystem afero.Fs, device media.Entry) {
-		err := media.Cleanup(fileSystem, device)
+		err := media.CleanupAndCompress(fileSystem, device)
 		if err != nil {
 			log.Fatalf("error cleaning up resources: %v", err)
 		}
+
 	}(localFS, device)
 
 	if err := media.FileSystemExpansion(device); err != nil {
