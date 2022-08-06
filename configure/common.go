@@ -17,11 +17,7 @@
 package configure
 
 import (
-	"bytes"
 	"embed"
-	"io/fs"
-	"path"
-	"text/template"
 )
 
 //go:embed files/*
@@ -33,18 +29,3 @@ const (
 
 	commandLinePath = "/boot/firmware/cmdline.txt"
 )
-
-func RenderTemplate(fs fs.FS, templatePath string, data any) (bytes.Buffer, error) {
-	var buffer bytes.Buffer
-
-	name := path.Base(templatePath)
-
-	parsedTemplate, templateErr := template.New(name).ParseFS(fs, templatePath)
-	if templateErr != nil {
-		return buffer, templateErr
-	}
-	if err := parsedTemplate.Execute(&buffer, data); err != nil {
-		return buffer, err
-	}
-	return buffer, nil
-}

@@ -17,12 +17,51 @@
 package utility
 
 import (
+	"bytes"
+	"context"
+	"fmt"
 	"io"
+	"io/fs"
 	"log"
+	"os/exec"
+	"path"
+	"text/template"
+
+	"github.com/LadySerena/pi-image-builder/telemetry"
 )
 
 func WrappedClose(closer io.Closer) {
 	if err := closer.Close(); err != nil {
 		log.Panicf("could not close closer properly: %v", err)
 	}
+}
+
+func RunCommandWithOutput(ctx context.Context, cmd *exec.Cmd) error {
+
+	_, span := telemetry.GetTracer().Start(ctx, fmt.Sprintf("running command: %s", cmd.String()))
+	defer span.End()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("non zero exit code exit code: %v, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+func RenderTemplate(ctx context.Context, fs fs.FS, templatePath string, data any) (bytes.Buffer, error) {
+
+	_, span := telemetry.GetTracer().Start(ctx, fmt.Sprintf("writing template: %s", templatePath))
+	defer span.End()
+	var buffer bytes.Buffer
+
+	name := path.Base(templatePath)
+
+	parsedTemplate, templateErr := template.New(name).ParseFS(fs, templatePath)
+	if templateErr != nil {
+		return buffer, templateErr
+	}
+	if err := parsedTemplate.Execute(&buffer, data); err != nil {
+		return buffer, err
+	}
+	return buffer, nil
 }

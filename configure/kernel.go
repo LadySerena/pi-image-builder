@@ -19,11 +19,13 @@ package configure
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/LadySerena/pi-image-builder/telemetry"
 	"github.com/LadySerena/pi-image-builder/utility"
 	"github.com/spf13/afero"
 )
@@ -46,7 +48,10 @@ func (s Sysctl) Write(writer io.Writer) (int, error) {
 	return writer.Write([]byte(data))
 }
 
-func KernelSettings(fs afero.Fs) error {
+func KernelSettings(ctx context.Context, fs afero.Fs) error {
+
+	ctx, span := telemetry.GetTracer().Start(ctx, "configure kernel")
+	defer span.End()
 
 	decompressKernel, decompressErr := configFiles.Open("files/decompressKernel.bash")
 	if decompressErr != nil {
@@ -55,11 +60,11 @@ func KernelSettings(fs afero.Fs) error {
 
 	defer utility.WrappedClose(decompressKernel)
 
-	if err := IdempotentWrite(fs, bytes.NewBufferString(commandLine), commandLinePath, 0755); err != nil {
+	if err := IdempotentWrite(ctx, fs, bytes.NewBufferString(commandLine), commandLinePath, 0755); err != nil {
 		return err
 	}
 
-	if err := IdempotentWrite(fs, decompressKernel, "/boot/auto_decompress_kernel", 0544); err != nil {
+	if err := IdempotentWrite(ctx, fs, decompressKernel, "/boot/auto_decompress_kernel", 0544); err != nil {
 		return err
 	}
 
@@ -69,7 +74,7 @@ func KernelSettings(fs afero.Fs) error {
 	}
 	defer utility.WrappedClose(firmwareConfigFile)
 
-	if err := IdempotentWrite(fs, firmwareConfigFile, "/boot/firmware/usercfg.txt", 0755); err != nil {
+	if err := IdempotentWrite(ctx, fs, firmwareConfigFile, "/boot/firmware/usercfg.txt", 0755); err != nil {
 		return err
 	}
 
@@ -101,14 +106,17 @@ func KernelSettings(fs afero.Fs) error {
 		return writeErr
 	}
 
-	if err := IdempotentWrite(fs, bytes.NewBufferString(postInvoke), "/etc/apt/apt.conf.d/999_decompress_rpi_kernel", 0644); err != nil {
+	if err := IdempotentWrite(ctx, fs, bytes.NewBufferString(postInvoke), "/etc/apt/apt.conf.d/999_decompress_rpi_kernel", 0644); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func KernelModules(fs afero.Fs) error {
+func KernelModules(ctx context.Context, fs afero.Fs) error {
+
+	_, span := telemetry.GetTracer().Start(ctx, "configuring kernel modules")
+	defer span.End()
 
 	modules := strings.Join([]string{"br_netfilter", "overlay"}, "\n")
 	kubernetesSysctlPath := "/etc/modules-load.d/k8s.conf"

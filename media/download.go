@@ -18,29 +18,30 @@ package media
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
-	"net/http"
 	"net/url"
 	"os"
 	"path"
-	"time"
 
+	"github.com/LadySerena/pi-image-builder/telemetry"
 	"github.com/LadySerena/pi-image-builder/utility"
 	"github.com/spf13/afero"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/sync/errgroup"
 )
 
 const ImageName = "ubuntu-20.04.4-preinstalled-server-arm64+raspi.img.xz"
 
-func DownloadAndVerifyMedia(fileSystem afero.Fs, forceOverwrite bool) error {
+func DownloadAndVerifyMedia(ctx context.Context, fileSystem afero.Fs, forceOverwrite bool) error {
 
-	client := http.Client{
-		Timeout: time.Minute * 5,
-	}
+	ctx, span := telemetry.GetTracer().Start(ctx, "download media")
+	defer span.End()
 
 	releaseURL, parseErr := url.Parse("https://cdimage.ubuntu.com/releases/20.04/release")
 	if parseErr != nil {
@@ -57,7 +58,7 @@ func DownloadAndVerifyMedia(fileSystem afero.Fs, forceOverwrite bool) error {
 		if forceOverwrite || errors.Is(mediaStatErr, fs.ErrNotExist) {
 			mediaURL := *releaseURL
 			mediaURL.Path = path.Join(releaseURL.Path, ImageName)
-			return DownloadFile(&client, fileSystem, ImageName, mediaURL.String())
+			return DownloadFile(ctx, fileSystem, ImageName, mediaURL.String())
 		}
 		return nil
 	})
@@ -65,7 +66,7 @@ func DownloadAndVerifyMedia(fileSystem afero.Fs, forceOverwrite bool) error {
 		if forceOverwrite || errors.Is(checksumStatErr, fs.ErrNotExist) {
 			checksumURL := *releaseURL
 			checksumURL.Path = path.Join(releaseURL.Path, checksumName)
-			return DownloadFile(&client, fileSystem, checksumName, checksumURL.String())
+			return DownloadFile(ctx, fileSystem, checksumName, checksumURL.String())
 		}
 		return nil
 	})
@@ -82,17 +83,21 @@ func DownloadAndVerifyMedia(fileSystem afero.Fs, forceOverwrite bool) error {
 		return checksumOpenErr
 	}
 
-	return ValidateHashes(ImageName, media, checksum)
+	return ValidateHashes(ctx, ImageName, media, checksum)
 }
 
-func DownloadFile(client *http.Client, fileSystem afero.Fs, fileName string, url string) error {
+func DownloadFile(ctx context.Context, fileSystem afero.Fs, fileName string, url string) error {
+
+	ctx, span := telemetry.GetTracer().Start(ctx, "Download")
+	span.AddEvent(fmt.Sprintf("downloading: %s", fileName))
+	defer span.End()
 	media, mediaErr := fileSystem.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if mediaErr != nil {
 		return mediaErr
 	}
 	defer utility.WrappedClose(media)
 
-	mediaResponse, mediaDownloadErr := client.Get(url)
+	mediaResponse, mediaDownloadErr := otelhttp.Get(ctx, url)
 	if mediaDownloadErr != nil {
 		return mediaDownloadErr
 	}
@@ -105,7 +110,9 @@ func DownloadFile(client *http.Client, fileSystem afero.Fs, fileName string, url
 	return nil
 }
 
-func ValidateHashes(fileName string, mediaBytes []byte, checksumBytes []byte) error {
+func ValidateHashes(ctx context.Context, fileName string, mediaBytes []byte, checksumBytes []byte) error {
+	_, span := telemetry.GetTracer().Start(ctx, "hash validate")
+	defer span.End()
 	hash := sha256.New()
 	hash.Write(mediaBytes)
 	mediaHash := []byte(hex.EncodeToString(hash.Sum(nil)))

@@ -18,6 +18,7 @@ package media
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,6 +28,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/LadySerena/pi-image-builder/telemetry"
 	"github.com/LadySerena/pi-image-builder/utility"
 	"github.com/c2h5oh/datasize"
 	"github.com/klauspost/compress/zstd"
@@ -119,7 +121,10 @@ func parsePartedOutput(output []byte) (PartitionEntry, error) {
 	return PartitionEntry{}, nil
 }
 
-func ExtractImage() (string, error) {
+func ExtractImage(ctx context.Context) (string, error) {
+
+	_, span := telemetry.GetTracer().Start(ctx, "Extract Image")
+	defer span.End()
 
 	_, alreadyExtracted := os.Stat(extractName)
 	if alreadyExtracted == nil {
@@ -139,7 +144,10 @@ func ExtractImage() (string, error) {
 	return extractName, command.Run()
 }
 
-func ExpandSize() error {
+func ExpandSize(ctx context.Context) error {
+	_, span := telemetry.GetTracer().Start(ctx, "Expand image file")
+	defer span.End()
+
 	path, pathErr := filepath.Abs(extractName)
 	if pathErr != nil {
 		return pathErr
@@ -161,7 +169,10 @@ func ExpandSize() error {
 	return file.Truncate(newSize)
 }
 
-func MountImageToDevice() (Entry, error) {
+func MountImageToDevice(ctx context.Context) (Entry, error) {
+
+	_, span := telemetry.GetTracer().Start(ctx, "map image to loop device")
+	defer span.End()
 
 	path, pathErr := filepath.Abs(extractName)
 	if pathErr != nil {
@@ -196,7 +207,11 @@ func MountImageToDevice() (Entry, error) {
 
 }
 
-func FileSystemExpansion(device Entry) error {
+func FileSystemExpansion(ctx context.Context, device Entry) error {
+
+	ctx, span := telemetry.GetTracer().Start(ctx, "expand partition and filesystem")
+	defer span.End()
+
 	partitionCommand := exec.Command("parted", "-s", "-m", device.Name, "--", "unit", "B", "print") //nolint:gosec
 	output, pipeCreateErr := partitionCommand.StdoutPipe()
 	if pipeCreateErr != nil {
@@ -220,26 +235,28 @@ func FileSystemExpansion(device Entry) error {
 	end := fmt.Sprintf("%dB", partition.End.Bytes())
 
 	resizePartition := exec.Command("parted", device.Name, "resizepart", strconv.FormatUint(partition.Number, 10), end, "-s") //nolint:gosec
-	if err := resizePartition.Run(); err != nil {
+	if err := utility.RunCommandWithOutput(ctx, resizePartition); err != nil {
 		return err
 	}
 
 	partitionName := fmt.Sprintf("%sp%d", device.Name, partition.Number)
 
 	fsCheck := exec.Command("e2fsck", "-pf", partitionName) //nolint:gosec
-	if err := fsCheck.Run(); err != nil {
+	if err := utility.RunCommandWithOutput(ctx, fsCheck); err != nil {
 		return err
 	}
 
 	resizeFS := exec.Command("resize2fs", partitionName) //nolint:gosec
-	if err := resizeFS.Run(); err != nil {
+	if err := utility.RunCommandWithOutput(ctx, resizeFS); err != nil {
 		return err
 	}
 	return nil
 }
 
-func AttachToMountPoint(fileSystem afero.Fs, device Entry) error {
+func AttachToMountPoint(ctx context.Context, fileSystem afero.Fs, device Entry) error {
 
+	_, span := telemetry.GetTracer().Start(ctx, "mount loop device")
+	defer span.End()
 	if err := fileSystem.MkdirAll(bootMountPoint, 0751); err != nil {
 		return err
 	}
@@ -278,7 +295,11 @@ func AttachToMountPoint(fileSystem afero.Fs, device Entry) error {
 	return nil
 }
 
-func CleanupAndCompress(fileSystem afero.Fs, device Entry) error {
+func CleanupAndCompress(ctx context.Context, fileSystem afero.Fs, device Entry) error {
+
+	_, span := telemetry.GetTracer().Start(ctx, "clean up resources")
+	defer span.End()
+
 	if err := fileSystem.Remove(mountedResolv); err != nil {
 		return err
 	}
