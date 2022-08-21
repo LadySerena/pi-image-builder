@@ -36,10 +36,13 @@ func WrappedClose(closer io.Closer) {
 	}
 }
 
-func RunCommandWithOutput(ctx context.Context, cmd *exec.Cmd) error {
+func RunCommandWithOutput(ctx context.Context, cmd *exec.Cmd, cancel context.CancelFunc) error {
 
 	_, span := telemetry.GetTracer().Start(ctx, fmt.Sprintf("running command: %s", cmd.String()))
 	defer span.End()
+	if cancel != nil {
+		defer cancel()
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("non zero exit code exit code: %v, output: %s", err, string(output))

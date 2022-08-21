@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/LadySerena/pi-image-builder/telemetry"
 	"github.com/LadySerena/pi-image-builder/utility"
 	"github.com/c2h5oh/datasize"
@@ -164,7 +165,7 @@ func ExpandSize(ctx context.Context) error {
 	if openErr != nil {
 		return openErr
 	}
-	bufferSize := datasize.MB * 1000
+	bufferSize := datasize.MB * 2000
 	newSize := int64(bufferSize.Bytes()) + info.Size()
 	return file.Truncate(newSize)
 }
@@ -235,19 +236,19 @@ func FileSystemExpansion(ctx context.Context, device Entry) error {
 	end := fmt.Sprintf("%dB", partition.End.Bytes())
 
 	resizePartition := exec.Command("parted", device.Name, "resizepart", strconv.FormatUint(partition.Number, 10), end, "-s") //nolint:gosec
-	if err := utility.RunCommandWithOutput(ctx, resizePartition); err != nil {
+	if err := utility.RunCommandWithOutput(ctx, resizePartition, nil); err != nil {
 		return err
 	}
 
 	partitionName := fmt.Sprintf("%sp%d", device.Name, partition.Number)
 
 	fsCheck := exec.Command("e2fsck", "-pf", partitionName) //nolint:gosec
-	if err := utility.RunCommandWithOutput(ctx, fsCheck); err != nil {
+	if err := utility.RunCommandWithOutput(ctx, fsCheck, nil); err != nil {
 		return err
 	}
 
 	resizeFS := exec.Command("resize2fs", partitionName) //nolint:gosec
-	if err := utility.RunCommandWithOutput(ctx, resizeFS); err != nil {
+	if err := utility.RunCommandWithOutput(ctx, resizeFS, nil); err != nil {
 		return err
 	}
 	return nil
@@ -295,7 +296,7 @@ func AttachToMountPoint(ctx context.Context, fileSystem afero.Fs, device Entry) 
 	return nil
 }
 
-func CleanupAndCompress(ctx context.Context, fileSystem afero.Fs, device Entry) error {
+func CleanUp(ctx context.Context, fileSystem afero.Fs, device Entry) error {
 
 	_, span := telemetry.GetTracer().Start(ctx, "clean up resources")
 	defer span.End()
@@ -324,33 +325,62 @@ func CleanupAndCompress(ctx context.Context, fileSystem afero.Fs, device Entry) 
 		return err
 	}
 
+	return nil
+}
+
+func CompressImage(ctx context.Context, fileSystem afero.Fs, client *storage.Client) (string, error) {
+
+	_, span := telemetry.GetTracer().Start(ctx, "compress image")
+	defer span.End()
+
 	now := time.Now()
 
 	newImageName := fmt.Sprintf("ubuntu-20-04-arm64-%s-%d.img", now.Format("01-02-2006"), now.UnixMilli())
 
 	if err := fileSystem.Rename(extractName, newImageName); err != nil {
-		return err
+		return "", err
 	}
 	file, fileErr := fileSystem.Open(newImageName)
 	if fileErr != nil {
-		return fileErr
+		return "", fileErr
 	}
 
 	defer utility.WrappedClose(file)
 
-	compressedFile, fileOpenErr := fileSystem.Create(fmt.Sprintf("%s.zstd", newImageName))
+	compressedFileName := fmt.Sprintf("%s.zstd", newImageName)
+	compressedFile, fileOpenErr := fileSystem.Create(compressedFileName)
 	if fileOpenErr != nil {
-		return fileOpenErr
+		return "", fileOpenErr
 	}
 	defer utility.WrappedClose(compressedFile)
 
 	compressor, compressorErr := zstd.NewWriter(compressedFile, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
 	if compressorErr != nil {
-		return compressorErr
+		return "", compressorErr
 	}
 	defer utility.WrappedClose(compressor)
 
 	if _, err := io.Copy(compressor, file); err != nil {
+		return "", err
+	}
+
+	return compressedFileName, nil
+}
+
+func UploadImage(ctx context.Context, fileSystem afero.Fs, fileName string, client *storage.Client) error {
+	_, span := telemetry.GetTracer().Start(ctx, "upload image")
+	defer span.End()
+
+	compressedFile, openErr := fileSystem.Open(fileName)
+	if openErr != nil {
+		return openErr
+	}
+	defer utility.WrappedClose(compressedFile)
+
+	objectWriter := client.Bucket("pi-images.serenacodes.com").Object(compressedFile.Name()).NewWriter(ctx)
+	defer utility.WrappedClose(objectWriter)
+
+	if _, err := io.Copy(objectWriter, compressedFile); err != nil {
 		return err
 	}
 

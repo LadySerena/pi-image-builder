@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"time"
 
 	"github.com/LadySerena/pi-image-builder/telemetry"
 	"github.com/LadySerena/pi-image-builder/utility"
@@ -44,12 +45,6 @@ type Deb822Repo struct {
 }
 
 const (
-	repoString = `Types: %s
-URIs: %s
-Suites: %s
-Components: %s
-Architectures: %s
-`
 	mount = "./mnt"
 )
 
@@ -84,16 +79,11 @@ func (e ErrStatusCode) Error() string {
 	return fmt.Sprintf("expected http code: %d, got %d instead", e.expectedCode, e.statusCode)
 }
 
-// Deprecated: Write this method is brittle and there is a better go template solution
-func (r Deb822Repo) Write(w io.Writer) (int, error) {
-	repoString := fmt.Sprintf(repoString, r.Types, r.URIs, r.Suites, r.Components, r.Arch)
-	return w.Write([]byte(repoString))
-}
-
-func NspawnCommand(mount string, args ...string) *exec.Cmd {
-	prepend := append([]string{"-D", mount}, args...)
-	command := exec.Command("systemd-nspawn", prepend...)
-	return command
+func NspawnCommand(ctx context.Context, mount string, timeout time.Duration, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	prepend := append([]string{"--setenv=DEBIAN_FRONTEND=noninteractive", "-D", mount}, args...)
+	command := exec.CommandContext(ctx, "systemd-nspawn", prepend...)
+	return command, cancel
 }
 
 func Packages(ctx context.Context, fs afero.Fs) error {
@@ -112,18 +102,23 @@ func Packages(ctx context.Context, fs afero.Fs) error {
 		"lm-sensors",
 		"perl",
 		"htop",
-		"crudini",
-		"bat",
 		"apt-transport-https",
 		"nftables",
 		"conntrack",
 	}
 
-	if err := utility.RunCommandWithOutput(ctx, NspawnCommand(mount, "apt-get", "update")); err != nil {
+	update, updateCancel := NspawnCommand(ctx, mount, 5*time.Minute, "apt-get", "update")
+	if err := utility.RunCommandWithOutput(ctx, update, updateCancel); err != nil {
 		return err
 	}
 
-	if err := utility.RunCommandWithOutput(ctx, NspawnCommand(mount, append([]string{"apt-get", "install", "-y"}, basePackages...)...)); err != nil {
+	uninstall, uninstallCancel := NspawnCommand(ctx, mount, 20*time.Minute, "apt-get", "purge", "-y", "snapd")
+	if err := utility.RunCommandWithOutput(ctx, uninstall, uninstallCancel); err != nil {
+		return err
+	}
+
+	install, installCancel := NspawnCommand(ctx, mount, 20*time.Minute, append([]string{"apt-get", "install", "--no-install-recommends", "-y"}, basePackages...)...)
+	if err := utility.RunCommandWithOutput(ctx, install, installCancel); err != nil {
 		return err
 	}
 
@@ -154,11 +149,21 @@ func Packages(ctx context.Context, fs afero.Fs) error {
 		return err
 	}
 
-	if err := utility.RunCommandWithOutput(ctx, NspawnCommand(mount, "apt-get", "update")); err != nil {
+	preDockerUpdate, dockerUpdateCancel := NspawnCommand(ctx, mount, 5*time.Minute, "apt-get", "update")
+
+	if err := utility.RunCommandWithOutput(ctx, preDockerUpdate, dockerUpdateCancel); err != nil {
 		return err
 	}
+	// todo feature flag this
+	//upgrade, upgradeCancel := NspawnCommand(ctx, mount, 20*time.Minute, "apt-get", "upgrade", "-y")
+	//
+	//if err := utility.RunCommandWithOutput(ctx, upgrade, upgradeCancel); err != nil {
+	//	return err
+	//}
 
-	if err := utility.RunCommandWithOutput(ctx, NspawnCommand(mount, "apt-get", "install", "-y", "containerd.io")); err != nil {
+	dockerInstall, dockerCancel := NspawnCommand(ctx, mount, 20*time.Minute, "apt-get", "install", "-y", "containerd.io")
+
+	if err := utility.RunCommandWithOutput(ctx, dockerInstall, dockerCancel); err != nil {
 		return err
 	}
 
@@ -198,7 +203,7 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 	if cniDownload.StatusCode != http.StatusOK {
 		return NewErrStatusCode(http.StatusOK, cniDownload.StatusCode)
 	}
-	defer utility.WrappedClose(cniDownload.Body)
+	defer cniDownload.Body.Close()
 
 	cniFs := afero.NewBasePathFs(fs, cniDir)
 	if err := ExtractTarGz(ctx, cniFs, cniDownload.Body); err != nil {
@@ -212,7 +217,7 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 	if criCtlDownload.StatusCode != http.StatusOK {
 		return NewErrStatusCode(http.StatusOK, criCtlDownload.StatusCode)
 	}
-	defer utility.WrappedClose(criCtlDownload.Body)
+	defer cniDownload.Body.Close()
 
 	kubernetesFs := afero.NewBasePathFs(fs, downloadDir)
 
@@ -227,7 +232,7 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 	if kubeadmDownload.StatusCode != http.StatusOK {
 		return NewErrStatusCode(http.StatusOK, kubeadmDownload.StatusCode)
 	}
-	defer utility.WrappedClose(kubeadmDownload.Body)
+	defer kubeadmDownload.Body.Close()
 
 	if err := IdempotentWrite(ctx, kubernetesFs, kubeadmDownload.Body, "kubeadm", 0755); err != nil {
 		return err
@@ -240,7 +245,7 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 	if kubeletDownload.StatusCode != http.StatusOK {
 		return NewErrStatusCode(http.StatusOK, kubeletDownload.StatusCode)
 	}
-	defer utility.WrappedClose(kubeletDownload.Body)
+	defer kubeletDownload.Body.Close()
 
 	if err := IdempotentWrite(ctx, kubernetesFs, kubeletDownload.Body, "kubelet", 0755); err != nil {
 		return err
@@ -253,7 +258,7 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 	if kubectlDownload.StatusCode != http.StatusOK {
 		return NewErrStatusCode(http.StatusOK, kubectlDownload.StatusCode)
 	}
-	defer utility.WrappedClose(kubectlDownload.Body)
+	defer kubectlDownload.Body.Close()
 
 	if err := IdempotentWrite(ctx, kubernetesFs, kubectlDownload.Body, "kubectl", 0755); err != nil {
 		return err
@@ -283,7 +288,9 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 		return err
 	}
 
-	if err := utility.RunCommandWithOutput(ctx, NspawnCommand(mount, "systemctl", "enable", "kubelet")); err != nil {
+	enableKubelet, kubeletCancel := NspawnCommand(ctx, mount, 5*time.Minute, "systemctl", "enable", "kubelet")
+
+	if err := utility.RunCommandWithOutput(ctx, enableKubelet, kubeletCancel); err != nil {
 		return err
 	}
 

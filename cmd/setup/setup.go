@@ -22,13 +22,17 @@ import (
 	"net/http"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/LadySerena/pi-image-builder/configure"
 	"github.com/LadySerena/pi-image-builder/media"
 	"github.com/LadySerena/pi-image-builder/telemetry"
 	"github.com/spf13/afero"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	"google.golang.org/api/option"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -44,8 +48,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	client := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport), Timeout: time.Minute * 5}
+	client := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport), Timeout: time.Minute * 10}
 	otelhttp.DefaultClient = &client
+
+	gcsClient, gcsErr := storage.NewClient(ctx,
+		option.WithCredentialsFile("/home/serena/.config/gcloud/application_default_credentials.json"),
+		option.WithGRPCDialOption(grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor())),
+		option.WithGRPCDialOption(grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor())))
+	if gcsErr != nil {
+		log.Panicf("error creating cloud storage client: %v", gcsErr)
+	}
 
 	defer func(ctx context.Context) {
 		log.Println("beginning graceful shutdown")
@@ -83,9 +95,26 @@ func main() {
 	}
 
 	defer func(fileSystem afero.Fs, device media.Entry) {
-		err := media.CleanupAndCompress(ctx, fileSystem, device)
-		if err != nil {
-			log.Fatalf("error cleaning up resources: %v", err)
+		if r := recover(); r != nil {
+			log.Print("cleaning up resources after failed image build")
+			err := media.CleanUp(ctx, fileSystem, device)
+			if err != nil {
+				log.Fatalf("error cleaning up resources: %v", err)
+			}
+		} else {
+			if err := media.CleanUp(ctx, fileSystem, device); err != nil {
+				log.Fatalf("error cleaning up resources: %v", err)
+			}
+
+			imageName, compressErr := media.CompressImage(ctx, fileSystem, gcsClient)
+			if compressErr != nil {
+				log.Fatalf("error compressing image: %v", compressErr)
+			}
+
+			if err := media.UploadImage(ctx, fileSystem, imageName, gcsClient); err != nil {
+				log.Fatalf("error uploading image: %v", err)
+			}
+			log.Print("finished all image operations")
 		}
 
 	}(localFS, device)
@@ -118,5 +147,5 @@ func main() {
 		log.Panicf("error configuring cloudinit drop in files: %v", err)
 	}
 
-	// todo compress file with zstd and upload to gcs
+	// todo upload to gcs
 }
