@@ -8,7 +8,6 @@ run:
     - "old-image/*"
 linters:
   enable:
-    - deadcode
     - errcheck
     - gosimple
     - govet

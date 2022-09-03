@@ -27,26 +27,48 @@ import (
 	"github.com/LadySerena/pi-image-builder/media"
 	"github.com/LadySerena/pi-image-builder/telemetry"
 	"github.com/spf13/afero"
+	flag "github.com/spf13/pflag"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 )
 
 func main() {
 
-	tp, traceErr := telemetry.NewExporter("http://localhost:14268/api/traces")
-	if traceErr != nil {
-		log.Panicf("error creating tracer: %v", traceErr)
-	}
-
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	enableTracing := flag.BoolP("trace-enabled", "t", false, "enable tracing")
+	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if !*enableTracing {
+		tp, traceErr := telemetry.NewExporter("http://localhost:14268/api/traces")
+		if traceErr != nil {
+			log.Panicf("error creating tracer: %v", traceErr)
+		}
+
+		otel.SetTracerProvider(tp)
+		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+
+		defer func(ctx context.Context) {
+			log.Println("beginning graceful shutdown")
+			ctx, cancel = context.WithTimeout(ctx, time.Minute*5)
+			defer cancel()
+			if err := tp.Shutdown(ctx); err != nil {
+				log.Panicf("could not shutdown trace provider: %v", err)
+			}
+		}(ctx)
+
+		tr := tp.Tracer(telemetry.TracerName)
+
+		var span trace.Span
+		ctx, span = tr.Start(ctx, "begin")
+		defer span.End()
+	}
 
 	client := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport), Timeout: time.Minute * 10}
 	otelhttp.DefaultClient = &client
@@ -58,20 +80,6 @@ func main() {
 	if gcsErr != nil {
 		log.Panicf("error creating cloud storage client: %v", gcsErr)
 	}
-
-	defer func(ctx context.Context) {
-		log.Println("beginning graceful shutdown")
-		ctx, cancel = context.WithTimeout(ctx, time.Minute*5)
-		defer cancel()
-		if err := tp.Shutdown(ctx); err != nil {
-			log.Panicf("could not shutdown trace provider: %v", err)
-		}
-	}(ctx)
-
-	tr := tp.Tracer(telemetry.TracerName)
-
-	ctx, span := tr.Start(ctx, "begin")
-	defer span.End()
 
 	localFS := afero.NewOsFs()
 	mountedFs := afero.NewBasePathFs(localFS, "./mnt")

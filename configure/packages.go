@@ -155,11 +155,11 @@ func Packages(ctx context.Context, fs afero.Fs) error {
 		return err
 	}
 	// todo feature flag this
-	//upgrade, upgradeCancel := NspawnCommand(ctx, mount, 20*time.Minute, "apt-get", "upgrade", "-y")
-	//
-	//if err := utility.RunCommandWithOutput(ctx, upgrade, upgradeCancel); err != nil {
-	//	return err
-	//}
+	upgrade, upgradeCancel := NspawnCommand(ctx, mount, 20*time.Minute, "apt-get", "upgrade", "-y")
+
+	if err := utility.RunCommandWithOutput(ctx, upgrade, upgradeCancel); err != nil {
+		return err
+	}
 
 	dockerInstall, dockerCancel := NspawnCommand(ctx, mount, 20*time.Minute, "apt-get", "install", "-y", "containerd.io")
 
