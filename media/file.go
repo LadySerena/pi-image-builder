@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	extractName         = "ubuntu-20.04.4-preinstalled-server-arm64+raspi.img"
+	extractName         = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img"
 	expectedSize        = 4 * datasize.GB
 	resolvConf          = "/etc/resolv.conf"
 	rootMountPoint      = "./mnt"

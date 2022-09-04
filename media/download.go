@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -36,7 +37,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const ImageName = "ubuntu-20.04.4-preinstalled-server-arm64+raspi.img.xz"
+const ImageName = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img.xz"
 
 func DownloadAndVerifyMedia(ctx context.Context, fileSystem afero.Fs, forceOverwrite bool) error {
 
@@ -102,6 +103,9 @@ func DownloadFile(ctx context.Context, fileSystem afero.Fs, fileName string, url
 		return mediaDownloadErr
 	}
 	defer utility.WrappedClose(mediaResponse.Body)
+	if mediaResponse.StatusCode != http.StatusOK {
+		return fmt.Errorf("received non 200 status code: %d", mediaResponse.StatusCode)
+	}
 
 	_, copyErr := io.Copy(media, mediaResponse.Body)
 	if copyErr != nil {
