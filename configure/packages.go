@@ -105,6 +105,7 @@ func Packages(ctx context.Context, fs afero.Fs) error {
 		"apt-transport-https",
 		"nftables",
 		"conntrack",
+		"lvm2",
 	}
 
 	update, updateCancel := NspawnCommand(ctx, mount, 5*time.Minute, "apt-get", "update")

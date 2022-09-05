@@ -37,7 +37,6 @@ import (
 )
 
 const (
-	extractName         = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img"
 	expectedSize        = 4 * datasize.GB
 	resolvConf          = "/etc/resolv.conf"
 	rootMountPoint      = "./mnt"
@@ -127,12 +126,12 @@ func ExtractImage(ctx context.Context) (string, error) {
 	_, span := telemetry.GetTracer().Start(ctx, "Extract Image")
 	defer span.End()
 
-	_, alreadyExtracted := os.Stat(extractName)
+	_, alreadyExtracted := os.Stat(utility.ExtractName)
 	if alreadyExtracted == nil {
-		return extractName, nil
+		return utility.ExtractName, nil
 	}
 
-	filePath, err := filepath.Abs(ImageName)
+	filePath, err := filepath.Abs(utility.ImageName)
 	if err != nil {
 		return "", err
 	}
@@ -142,14 +141,14 @@ func ExtractImage(ctx context.Context) (string, error) {
 	}
 
 	command := exec.Command("xz", "-d", "-k", filePath)
-	return extractName, command.Run()
+	return utility.ExtractName, command.Run()
 }
 
 func ExpandSize(ctx context.Context) error {
 	_, span := telemetry.GetTracer().Start(ctx, "Expand image file")
 	defer span.End()
 
-	path, pathErr := filepath.Abs(extractName)
+	path, pathErr := filepath.Abs(utility.ExtractName)
 	if pathErr != nil {
 		return pathErr
 	}
@@ -175,7 +174,7 @@ func MountImageToDevice(ctx context.Context) (Entry, error) {
 	_, span := telemetry.GetTracer().Start(ctx, "map image to loop device")
 	defer span.End()
 
-	path, pathErr := filepath.Abs(extractName)
+	path, pathErr := filepath.Abs(utility.ExtractName)
 	if pathErr != nil {
 		return Entry{}, pathErr
 	}
@@ -337,7 +336,7 @@ func CompressImage(ctx context.Context, fileSystem afero.Fs, client *storage.Cli
 
 	newImageName := fmt.Sprintf("ubuntu-20-04-arm64-%s-%d.img", now.Format("01-02-2006"), now.UnixMilli())
 
-	if err := fileSystem.Rename(extractName, newImageName); err != nil {
+	if err := fileSystem.Rename(utility.ExtractName, newImageName); err != nil {
 		return "", err
 	}
 	file, fileErr := fileSystem.Open(newImageName)

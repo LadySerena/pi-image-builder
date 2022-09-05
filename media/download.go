@@ -37,8 +37,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const ImageName = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img.xz"
-
 func DownloadAndVerifyMedia(ctx context.Context, fileSystem afero.Fs, forceOverwrite bool) error {
 
 	ctx, span := telemetry.GetTracer().Start(ctx, "download media")
@@ -51,15 +49,15 @@ func DownloadAndVerifyMedia(ctx context.Context, fileSystem afero.Fs, forceOverw
 
 	checksumName := "SHA256SUMS"
 
-	_, mediaStatErr := fileSystem.Stat(ImageName)
+	_, mediaStatErr := fileSystem.Stat(utility.ImageName)
 	_, checksumStatErr := fileSystem.Stat(checksumName)
 
 	group := new(errgroup.Group)
 	group.Go(func() error {
 		if forceOverwrite || errors.Is(mediaStatErr, fs.ErrNotExist) {
 			mediaURL := *releaseURL
-			mediaURL.Path = path.Join(releaseURL.Path, ImageName)
-			return DownloadFile(ctx, fileSystem, ImageName, mediaURL.String())
+			mediaURL.Path = path.Join(releaseURL.Path, utility.ImageName)
+			return DownloadFile(ctx, fileSystem, utility.ImageName, mediaURL.String())
 		}
 		return nil
 	})
@@ -75,7 +73,7 @@ func DownloadAndVerifyMedia(ctx context.Context, fileSystem afero.Fs, forceOverw
 		return waitErr
 	}
 
-	media, mediaErr := afero.ReadFile(fileSystem, ImageName)
+	media, mediaErr := afero.ReadFile(fileSystem, utility.ImageName)
 	if mediaErr != nil {
 		return mediaErr
 	}
@@ -84,7 +82,7 @@ func DownloadAndVerifyMedia(ctx context.Context, fileSystem afero.Fs, forceOverw
 		return checksumOpenErr
 	}
 
-	return ValidateHashes(ctx, ImageName, media, checksum)
+	return ValidateHashes(ctx, utility.ImageName, media, checksum)
 }
 
 func DownloadFile(ctx context.Context, fileSystem afero.Fs, fileName string, url string) error {

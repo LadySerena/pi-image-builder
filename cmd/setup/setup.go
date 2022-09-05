@@ -88,6 +88,8 @@ func main() {
 		log.Panicf("error with downloading media: %v", err)
 	}
 
+	log.Print("media successfully downloaded")
+
 	_, decompressErr := media.ExtractImage(ctx)
 	if decompressErr != nil {
 		log.Panicf("error decompressing image: %s", decompressErr)
@@ -110,6 +112,7 @@ func main() {
 				log.Fatalf("error cleaning up resources: %v", err)
 			}
 		} else {
+			log.Print("configuration finished, cleaning up resources and uploading")
 			if err := media.CleanUp(ctx, fileSystem, device); err != nil {
 				log.Fatalf("error cleaning up resources: %v", err)
 			}
@@ -135,6 +138,8 @@ func main() {
 		log.Panicf("error mounting image: %v", err)
 	}
 
+	log.Print("media size expanded and mounted beginning configuration")
+
 	if err := configure.KernelSettings(ctx, mountedFs); err != nil {
 		log.Panicf("error configuring kernel settings: %v", err)
 	}
@@ -154,6 +159,8 @@ func main() {
 	if err := configure.CloudInit(ctx, mountedFs); err != nil {
 		log.Panicf("error configuring cloudinit drop in files: %v", err)
 	}
+
+	log.Print("image has been configured")
 
 	// todo upload to gcs
 }

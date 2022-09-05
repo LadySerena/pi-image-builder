@@ -30,6 +30,11 @@ import (
 	"github.com/LadySerena/pi-image-builder/telemetry"
 )
 
+const (
+	ExtractName = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img"
+	ImageName   = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img.xz"
+)
+
 func WrappedClose(closer io.Closer) {
 	if err := closer.Close(); err != nil {
 		log.Panicf("could not close closer properly: %v", err)
