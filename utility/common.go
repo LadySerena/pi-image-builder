@@ -25,6 +25,7 @@ import (
 	"log"
 	"os/exec"
 	"path"
+	"strings"
 	"text/template"
 
 	"github.com/LadySerena/pi-image-builder/telemetry"
@@ -72,4 +73,14 @@ func RenderTemplate(ctx context.Context, fs fs.FS, templatePath string, data any
 		return buffer, err
 	}
 	return buffer, nil
+}
+
+func ConfirmDialog(messageFormat string, a ...any) bool {
+	response := ""
+	fmt.Printf(messageFormat, a...)
+	_, err := fmt.Scan(&response)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(response, "y")
 }

@@ -60,7 +60,13 @@ func KernelSettings(ctx context.Context, fs afero.Fs) error {
 
 	defer utility.WrappedClose(decompressKernel)
 
-	if err := IdempotentWrite(ctx, fs, bytes.NewBufferString(commandLine), commandLinePath, 0755); err != nil {
+	commandLineHandle, commandLineOpenErr := fs.OpenFile(commandLinePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0755)
+	if commandLineOpenErr != nil {
+		return commandLineOpenErr
+	}
+	defer utility.WrappedClose(commandLineHandle)
+
+	if _, err := commandLineHandle.WriteString(commandLine); err != nil {
 		return err
 	}
 

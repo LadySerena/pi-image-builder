@@ -74,7 +74,6 @@ func main() {
 	otelhttp.DefaultClient = &client
 
 	gcsClient, gcsErr := storage.NewClient(ctx,
-		option.WithCredentialsFile("/home/serena/.config/gcloud/application_default_credentials.json"),
 		option.WithGRPCDialOption(grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor())),
 		option.WithGRPCDialOption(grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor())))
 	if gcsErr != nil {
