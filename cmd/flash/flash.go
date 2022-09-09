@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/LadySerena/pi-image-builder/utility"
+	flag "github.com/spf13/pflag"
 )
 
 func main() {
@@ -27,6 +28,14 @@ func main() {
 	//todo flag for block device to flash
 	//todo flag to declare how to slice up the remaining logical partition
 	//todo actually might be better to have a config file for spacing 🤔?
+
+	imageName := flag.StringP("image", "i", "", "specify your desired image")
+	outputDevice := flag.StringP("device", "d", "", "specify which target device to flash the image")
+
+	flag.Parse()
+
+	if *imageName == "" {
+	}
 
 	ifDevice := "/dev/foobar"
 	answer := utility.ConfirmDialog("are you sure you want to flash the image to %s: [Y/n]: ", ifDevice)
