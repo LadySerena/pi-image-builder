@@ -18,14 +18,18 @@ package main
 
 import (
 	"fmt"
+	"log"
 
+	"github.com/LadySerena/pi-image-builder/partition"
 	"github.com/LadySerena/pi-image-builder/utility"
+	"github.com/c2h5oh/datasize"
 	flag "github.com/spf13/pflag"
 )
 
 func main() {
-	//todo flag to determine which image I'm using
-	//todo flag for block device to flash
+	//todo local or gsutil path for image
+	//todo validate block device
+	//todo blocklist for devices (prevent juggling chainsaws)
 	//todo flag to declare how to slice up the remaining logical partition
 	//todo actually might be better to have a config file for spacing 🤔?
 
@@ -35,13 +39,29 @@ func main() {
 	flag.Parse()
 
 	if *imageName == "" {
+		panic("you must specify a valid disk image")
 	}
 
-	ifDevice := "/dev/foobar"
-	answer := utility.ConfirmDialog("are you sure you want to flash the image to %s: [Y/n]: ", ifDevice)
+	if *outputDevice == "" {
+		panic("you must specify a valid block device")
+	}
+
+	//ctx := context.TODO()
+	//
+	//gcsClient, gcsErr := storage.NewClient(ctx)
+	//if gcsErr != nil {
+	//	log.Panicf("error creating cloud storage client: %v", gcsErr)
+	//}
+	//
+	//localFs := afero.NewOsFs()
+
+	answer := utility.ConfirmDialog("are you sure you want to flash the image to %s: [Y/n]: ", *outputDevice)
 	if !answer {
 		fmt.Println("nope")
 		return
 	}
-	fmt.Println("yep")
+
+	if err := partition.Create(datasize.B*257, *outputDevice); err != nil {
+		log.Panicf("could not create partitions: %v", err)
+	}
 }
