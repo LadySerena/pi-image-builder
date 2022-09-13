@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-
-	"github.com/c2h5oh/datasize"
 )
 
 type PrintOutput struct {
@@ -79,12 +77,43 @@ func partedCommand(device string, options ...string) *exec.Cmd {
 	return exec.Command("parted", args...)
 }
 
-func Create(bootSize datasize.ByteSize, device string) error {
+func CreateTable(device string) error {
 
 	if err := verifyEmptyPartitionTable(device); err != nil {
 		return err
 	}
-	//table := partedCommand(device, "mktable", "msdos")
+	table := partedCommand(device, "mktable", "msdos")
+	if err := table.Run(); err != nil {
+		return err
+	}
+
+	boot := partedCommand(device, "mkpart", "primary", "fat32", "2048s", "257MiB")
+	if err := boot.Run(); err != nil {
+		return err
+	}
+
+	root := partedCommand(device, "mkpart", "primary", "ext4", "257MiB", "100%")
+	if err := root.Run(); err != nil {
+		return err
+	}
+
+	lvmEnable := partedCommand(device, "set", "2", "lvm", "on")
+	if err := lvmEnable.Run(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func CreateFileSystems(device string) error {
+
+	// TODO sort out different block devices (loop, nvme append p$NUM) others just have the number at the end
+	//bootPartition := fmt.Sprintf("%s1", device)
+	//rootPartition := fmt.Sprintf("%s2", device)
+	//
+	//bootFS := exec.Command("mkfs.vfat", "-F", "32", "-n")
+
+	// mkfs.ext4 /dev/partition
 
 	return nil
 }

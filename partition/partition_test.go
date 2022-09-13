@@ -34,7 +34,7 @@ func TestPartedCommand(t *testing.T) {
 	for index, tt := range cases {
 		// test fails but is the same 🤔
 		actual := partedCommand(tt.input[0], tt.input[1], tt.input[2])
-		if !reflect.DeepEqual(actual, tt.expected) {
+		if !reflect.DeepEqual(actual.Args, tt.expected) {
 			t.Errorf("partedCommand(%d): expected %v, actual %v", index, tt.expected, actual.Args)
 		}
 	}

@@ -22,7 +22,6 @@ import (
 
 	"github.com/LadySerena/pi-image-builder/partition"
 	"github.com/LadySerena/pi-image-builder/utility"
-	"github.com/c2h5oh/datasize"
 	flag "github.com/spf13/pflag"
 )
 
@@ -61,7 +60,7 @@ func main() {
 		return
 	}
 
-	if err := partition.Create(datasize.B*257, *outputDevice); err != nil {
+	if err := partition.CreateTable(*outputDevice); err != nil {
 		log.Panicf("could not create partitions: %v", err)
 	}
 }
