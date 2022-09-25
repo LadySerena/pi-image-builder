@@ -17,10 +17,13 @@
 package partition
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
+
+	"github.com/LadySerena/pi-image-builder/utility"
 )
 
 type PrintOutput struct {
@@ -66,7 +69,7 @@ func verifyEmptyPartitionTable(device string) error {
 		return err
 	}
 
-	if parsedOutput.Disk.Partitions != nil {
+	if len(parsedOutput.Disk.Partitions) != 0 {
 		return fmt.Errorf("device: %s does not have an empty partition table", device)
 	}
 	return nil
@@ -105,15 +108,47 @@ func CreateTable(device string) error {
 	return nil
 }
 
+func CreateLogicalVolumes(device string) error {
+	rootPartition := fmt.Sprintf("%s2", device)
+	// TODO dynamically figure out how to leave about 256MiB for scrubs
+	// ideally this will be equal to totalSize - 256MiB aka 64 extents
+	size := "7410"
+
+	physicalVolume := exec.Command("pvcreate", rootPartition)
+
+	if err := utility.RunCommandWithOutput(context.TODO(), physicalVolume, nil); err != nil {
+		return err
+	}
+
+	volumeGroup := exec.Command("vgcreate", utility.VolumeGroupName, rootPartition)
+	if err := utility.RunCommandWithOutput(context.TODO(), volumeGroup, nil); err != nil {
+		return err
+	}
+
+	logicalVolume := exec.Command("lvcreate", "--extents", size, utility.VolumeGroupName, "-n", utility.LogicalVolumeName, "--wipesignatures", "y")
+	if err := utility.RunCommandWithOutput(context.TODO(), logicalVolume, nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func CreateFileSystems(device string) error {
+	// assume sd* for device
+	mapperName := utility.MapperName()
 
 	// TODO sort out different block devices (loop, nvme append p$NUM) others just have the number at the end
-	//bootPartition := fmt.Sprintf("%s1", device)
-	//rootPartition := fmt.Sprintf("%s2", device)
-	//
-	//bootFS := exec.Command("mkfs.vfat", "-F", "32", "-n")
+	bootPartition := fmt.Sprintf("%s1", device)
 
-	// mkfs.ext4 /dev/partition
+	bootFS := exec.Command("mkfs.vfat", "-F", "32", "-n", "system-boot", bootPartition)
+	if err := bootFS.Run(); err != nil {
+		return err
+	}
+
+	rootFS := exec.Command("mkfs.ext4", mapperName)
+	if err := rootFS.Run(); err != nil {
+		return err
+	}
 
 	return nil
 }

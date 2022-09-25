@@ -26,6 +26,7 @@ import (
 	"github.com/LadySerena/pi-image-builder/configure"
 	"github.com/LadySerena/pi-image-builder/media"
 	"github.com/LadySerena/pi-image-builder/telemetry"
+	"github.com/LadySerena/pi-image-builder/utility"
 	"github.com/spf13/afero"
 	flag "github.com/spf13/pflag"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -98,7 +99,7 @@ func main() {
 		log.Panicf("error expanding image size: %s", truncateErr)
 	}
 
-	device, mountFileErr := media.MountImageToDevice(ctx)
+	device, mountFileErr := media.MountImageToDevice(ctx, utility.ExtractName)
 	if mountFileErr != nil {
 		log.Panicf("error mounting image: %s", mountFileErr)
 	}
@@ -133,7 +134,7 @@ func main() {
 		log.Panicf("error expanding file system: %v", err)
 	}
 
-	if err := media.AttachToMountPoint(ctx, localFS, device); err != nil {
+	if err := media.AttachToMountPoint(ctx, localFS, device, true); err != nil {
 		log.Panicf("error mounting image: %v", err)
 	}
 
@@ -161,5 +162,4 @@ func main() {
 
 	log.Print("image has been configured")
 
-	// todo upload to gcs
 }

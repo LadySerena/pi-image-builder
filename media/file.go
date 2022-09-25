@@ -169,12 +169,12 @@ func ExpandSize(ctx context.Context) error {
 	return file.Truncate(newSize)
 }
 
-func MountImageToDevice(ctx context.Context) (Entry, error) {
+func MountImageToDevice(ctx context.Context, imageFile string) (Entry, error) {
 
 	_, span := telemetry.GetTracer().Start(ctx, "map image to loop device")
 	defer span.End()
 
-	path, pathErr := filepath.Abs(utility.ExtractName)
+	path, pathErr := filepath.Abs(imageFile)
 	if pathErr != nil {
 		return Entry{}, pathErr
 	}
@@ -253,7 +253,7 @@ func FileSystemExpansion(ctx context.Context, device Entry) error {
 	return nil
 }
 
-func AttachToMountPoint(ctx context.Context, fileSystem afero.Fs, device Entry) error {
+func AttachToMountPoint(ctx context.Context, fileSystem afero.Fs, device Entry, configureResolvConf bool) error {
 
 	_, span := telemetry.GetTracer().Start(ctx, "mount loop device")
 	defer span.End()
@@ -262,6 +262,8 @@ func AttachToMountPoint(ctx context.Context, fileSystem afero.Fs, device Entry) 
 	}
 
 	// todo get more info about the partition layout instead of hard coding
+	// todo fix above because of copy pasta in device.go
+	// specifically write a function that will give you the appropriate device names for partitions / logical volumes
 	if err := exec.Command("mount", fmt.Sprintf("%sp2", device.Name), rootMountPoint).Run(); err != nil { //nolint:gosec
 		return err
 	}
@@ -270,26 +272,28 @@ func AttachToMountPoint(ctx context.Context, fileSystem afero.Fs, device Entry) 
 		return err
 	}
 
-	if err := os.Symlink("../run/systemd/resolve/stub-resolv.conf", mountedResolvBackup); err != nil {
-		return err
-	}
+	if configureResolvConf {
+		if err := os.Symlink("../run/systemd/resolve/stub-resolv.conf", mountedResolvBackup); err != nil {
+			return err
+		}
 
-	fileInfo, err := fileSystem.Stat(resolvConf)
-	if err != nil {
-		return err
-	}
+		fileInfo, err := fileSystem.Stat(resolvConf)
+		if err != nil {
+			return err
+		}
 
-	if err := fileSystem.Remove(mountedResolv); err != nil {
-		return err
-	}
+		if err := fileSystem.Remove(mountedResolv); err != nil {
+			return err
+		}
 
-	resolve, readErr := afero.ReadFile(fileSystem, resolvConf)
-	if readErr != nil {
-		return readErr
-	}
+		resolve, readErr := afero.ReadFile(fileSystem, resolvConf)
+		if readErr != nil {
+			return readErr
+		}
 
-	if err := afero.WriteFile(fileSystem, mountedResolv, resolve, fileInfo.Mode()); err != nil {
-		return err
+		if err := afero.WriteFile(fileSystem, mountedResolv, resolve, fileInfo.Mode()); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -376,7 +380,7 @@ func UploadImage(ctx context.Context, fileSystem afero.Fs, fileName string, clie
 	}
 	defer utility.WrappedClose(compressedFile)
 
-	objectWriter := client.Bucket("pi-images.serenacodes.com").Object(compressedFile.Name()).NewWriter(ctx)
+	objectWriter := client.Bucket(utility.BucketName).Object(compressedFile.Name()).NewWriter(ctx)
 	defer utility.WrappedClose(objectWriter)
 
 	if _, err := io.Copy(objectWriter, compressedFile); err != nil {

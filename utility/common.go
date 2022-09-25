@@ -32,8 +32,11 @@ import (
 )
 
 const (
-	ExtractName = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img"
-	ImageName   = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img.xz"
+	ExtractName       = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img"
+	ImageName         = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img.xz"
+	BucketName        = "pi-images.serenacodes.com"
+	VolumeGroupName   = "rootvg"
+	LogicalVolumeName = "rootlv"
 )
 
 func WrappedClose(closer io.Closer) {
@@ -55,6 +58,17 @@ func RunCommandWithOutput(ctx context.Context, cmd *exec.Cmd, cancel context.Can
 	}
 
 	return nil
+}
+
+func MapperName() string {
+	return fmt.Sprintf("/dev/mapper/%s-%s", VolumeGroupName, LogicalVolumeName)
+}
+
+func TrailingSlash(inputPath string) string {
+	if strings.HasSuffix(inputPath, "/") {
+		return inputPath
+	}
+	return fmt.Sprintf("%s/", inputPath)
 }
 
 func RenderTemplate(ctx context.Context, fs fs.FS, templatePath string, data any) (bytes.Buffer, error) {
