@@ -22,25 +22,28 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
+	"strings"
 
 	"github.com/LadySerena/pi-image-builder/utility"
 )
 
+const (
+	// lvmMebibytes unit flag for mebibytes as seen in https://man.archlinux.org/man/vgs.8.en
+	lvmMebibytes = "m"
+	lvmBytes     = "B"
+	// byteToMebibyteFactor 1024^2 to go from bytes to kibibytes to mebibytes
+	byteToMebibyteFactor = 1024 * 1024
+	byteToGibibyteFactor = byteToMebibyteFactor * 1024
+)
+
 type PrintOutput struct {
 	Disk struct {
-		Label             string `json:"label"`
-		LogicalSectorSize int    `json:"logical-sector-size"`
-		MaxPartitions     int    `json:"max-partitions"`
-		Model             string `json:"model"`
-		Partitions        []struct {
-			End        string   `json:"end"`
-			Filesystem string   `json:"filesystem"`
-			Flags      []string `json:"flags"`
-			Number     int      `json:"number"`
-			Size       string   `json:"size"`
-			Start      string   `json:"start"`
-			Type       string   `json:"type"`
-		} `json:"partitions,omitempty"`
+		Label              string `json:"label"`
+		LogicalSectorSize  int    `json:"logical-sector-size"`
+		MaxPartitions      int    `json:"max-partitions"`
+		Model              string `json:"model"`
+		Partitions         []PartitionEntry
 		Path               string `json:"path"`
 		PhysicalSectorSize int    `json:"physical-sector-size"`
 		Size               string `json:"size"`
@@ -48,31 +51,59 @@ type PrintOutput struct {
 	} `json:"disk"`
 }
 
-func verifyEmptyPartitionTable(device string) error {
-	existing := exec.Command("parted", "-j", device, "print")
+type PartitionEntry struct {
+	End        string   `json:"end"`
+	Filesystem string   `json:"filesystem"`
+	Flags      []string `json:"flags"`
+	Number     int      `json:"number"`
+	Size       string   `json:"size"`
+	Start      string   `json:"start"`
+	Type       string   `json:"type"`
+}
+
+type VolumeGroupReport struct {
+	Report []struct {
+		VG []VolumeGroupEntry `json:"vg"`
+	} `json:"report"`
+}
+
+type VolumeGroupEntry struct {
+	Name        string `json:"vg_name"`
+	PvCount     string `json:"pv_count"`
+	LvCount     string `json:"lv_count"`
+	SnapCount   string `json:"snap_count"`
+	VGAttribute string `json:"vg_attr"`
+	VGSize      string `json:"vg_size"`
+	VGFree      string `json:"vg_free"`
+}
+
+type SlicedVolumeGroup struct {
+	RootVolumeSize int
+	CSIVolumeSize  int
+}
+
+func GetPartitionTable(device string) (PrintOutput, error) {
+	existing := exec.Command("parted", "-j", device, "unit", "MiB", "print")
 	outputReader, pipeCreateErr := existing.StdoutPipe()
 	if pipeCreateErr != nil {
-		return pipeCreateErr
+		return PrintOutput{}, pipeCreateErr
 	}
 	if err := existing.Start(); err != nil {
-		return err
+		return PrintOutput{}, err
 	}
 	jsonBlob, readErr := io.ReadAll(outputReader)
 	if readErr != nil {
-		return readErr
+		return PrintOutput{}, readErr
 	}
 	if err := existing.Wait(); err != nil {
-		return err
+		return PrintOutput{}, err
 	}
 	parsedOutput := PrintOutput{}
 	if err := json.Unmarshal(jsonBlob, &parsedOutput); err != nil {
-		return err
+		return PrintOutput{}, err
 	}
 
-	if len(parsedOutput.Disk.Partitions) != 0 {
-		return fmt.Errorf("device: %s does not have an empty partition table", device)
-	}
-	return nil
+	return parsedOutput, nil
 }
 
 func partedCommand(device string, options ...string) *exec.Cmd {
@@ -82,9 +113,15 @@ func partedCommand(device string, options ...string) *exec.Cmd {
 
 func CreateTable(device string) error {
 
-	if err := verifyEmptyPartitionTable(device); err != nil {
-		return err
+	currentTable, tableErr := GetPartitionTable(device)
+	if tableErr != nil {
+		return tableErr
 	}
+
+	if len(currentTable.Disk.Partitions) != 0 {
+		return fmt.Errorf("device: %s does not have an empty partition table", device)
+	}
+
 	table := partedCommand(device, "mktable", "msdos")
 	if err := table.Run(); err != nil {
 		return err
@@ -109,7 +146,9 @@ func CreateTable(device string) error {
 }
 
 func CreateLogicalVolumes(device string) error {
+
 	rootPartition := fmt.Sprintf("%s2", device)
+
 	// TODO dynamically figure out how to leave about 256MiB for scrubs
 	// ideally this will be equal to totalSize - 256MiB aka 64 extents
 	size := "7410"
@@ -120,12 +159,26 @@ func CreateLogicalVolumes(device string) error {
 		return err
 	}
 
-	volumeGroup := exec.Command("vgcreate", utility.VolumeGroupName, rootPartition)
+	volumeGroup := exec.Command("vgcreate", utility.VolumeGroupName, rootPartition) //nolint:gosec
 	if err := utility.RunCommandWithOutput(context.TODO(), volumeGroup, nil); err != nil {
 		return err
 	}
 
-	logicalVolume := exec.Command("lvcreate", "--extents", size, utility.VolumeGroupName, "-n", utility.LogicalVolumeName, "--wipesignatures", "y")
+	vgReport := exec.Command("vgs", utility.VolumeGroupName, "--reportformat", "json", "--units", lvmBytes)
+	output, reportErr := vgReport.CombinedOutput()
+	if reportErr != nil {
+		return reportErr
+	}
+
+	parsedReport := VolumeGroupReport{}
+	unmarshalErr := json.Unmarshal(output, &parsedReport)
+	if unmarshalErr != nil {
+		return unmarshalErr
+	}
+
+	//vgSize := parsedReport.Report[0].VG[0].VGSize
+
+	logicalVolume := exec.Command("lvcreate", "--extents", size, utility.VolumeGroupName, "-n", utility.LogicalVolumeName, "--wipesignatures", "y") //nolint:gosec
 	if err := utility.RunCommandWithOutput(context.TODO(), logicalVolume, nil); err != nil {
 		return err
 	}
@@ -151,4 +204,35 @@ func CreateFileSystems(device string) error {
 	}
 
 	return nil
+}
+
+// todo better name
+func hackery(entry VolumeGroupEntry) (SlicedVolumeGroup, error) {
+
+	initialSize := entry.VGFree
+	initialSize = strings.TrimSuffix(initialSize, lvmBytes)
+	parsedSize, conversionErr := strconv.Atoi(initialSize)
+	if conversionErr != nil {
+		return SlicedVolumeGroup{}, conversionErr
+	}
+
+	availableSize := parsedSize - (2 * 256 * byteToMebibyteFactor)
+
+	rootSize := 10 * byteToGibibyteFactor
+
+	storageSize := availableSize - rootSize
+
+	return SlicedVolumeGroup{
+		rootSize,
+		storageSize,
+	}, nil
+}
+
+func getPartitionEntry(data PrintOutput, partitionNumber int) PartitionEntry {
+	for _, entry := range data.Disk.Partitions {
+		if entry.Number == partitionNumber {
+			return entry
+		}
+	}
+	return PartitionEntry{}
 }

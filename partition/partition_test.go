@@ -19,6 +19,8 @@ package partition
 import (
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPartedCommand(t *testing.T) {
@@ -38,4 +40,24 @@ func TestPartedCommand(t *testing.T) {
 			t.Errorf("partedCommand(%d): expected %v, actual %v", index, tt.expected, actual.Args)
 		}
 	}
+}
+
+func TestHackery(t *testing.T) {
+	foo := VolumeGroupEntry{
+		Name:        "rootvg",
+		PvCount:     "1",
+		LvCount:     "0",
+		SnapCount:   "0",
+		VGAttribute: "wz--n-",
+		VGSize:      "31394365440B",
+		VGFree:      "31394365440B",
+	}
+	expected := SlicedVolumeGroup{
+		RootVolumeSize: 10737418240,
+		CSIVolumeSize:  20120076288,
+	}
+	actual, err := hackery(foo)
+	assert.NoError(t, err)
+	assert.Equal(t, expected.RootVolumeSize, actual.RootVolumeSize)
+	assert.Equal(t, expected.CSIVolumeSize, actual.CSIVolumeSize)
 }

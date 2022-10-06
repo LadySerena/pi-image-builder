@@ -334,6 +334,18 @@ func CloudInit(ctx context.Context, fs afero.Fs) error {
 	return nil
 }
 
+func Fstab(ctx context.Context, fs afero.Fs) error {
+	ctx, span := telemetry.GetTracer().Start(ctx, "configure fstab entries")
+	defer span.End()
+
+	fstab, fstabErr := configFiles.Open("files/fstab")
+	if fstabErr != nil {
+		return fstabErr
+	}
+
+	return IdempotentWrite(ctx, fs, fstab, "/etc/fstab", 0644)
+}
+
 func ExtractTarGz(ctx context.Context, fs afero.Fs, r io.Reader) error {
 
 	_, span := telemetry.GetTracer().Start(ctx, "Extract tar.gz")

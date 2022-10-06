@@ -24,7 +24,7 @@ import (
 var configFiles embed.FS
 
 const (
-	commandLine = "dwc_otg.lpm_enable=0 console=serial0,115200 console=tty1 root=LABEL=writable rootfstype=ext4 elevator=deadline rootwait fixrtc quiet splash cgroup_enable=memory swapaccount=1 cgroup_memory=1 cgroup_enable=cpuset"
+	commandLine = "dwc_otg.lpm_enable=0 console=serial0,115200 console=tty1 root=/dev/rootvg/rootlv rootfstype=ext4 elevator=deadline rootwait fixrtc quiet splash cgroup_enable=memory swapaccount=1 cgroup_memory=1 cgroup_enable=cpuset"
 	postInvoke  = `DPkg::Post-Invoke {"/bin/bash /boot/auto_decompress_kernel"; };`
 
 	commandLinePath = "/boot/firmware/cmdline.txt"

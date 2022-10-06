@@ -36,7 +36,7 @@ func MountMedia(ctx context.Context, fileSystem afero.Fs, device string) error {
 		return err
 	}
 
-	if err := exec.Command("mount", utility.MapperName(), mediaRoot).Run(); err != nil {
+	if err := exec.Command("mount", utility.MapperName(), mediaRoot).Run(); err != nil { //nolint:gosec
 		return err
 	}
 
@@ -44,7 +44,7 @@ func MountMedia(ctx context.Context, fileSystem afero.Fs, device string) error {
 		return err
 	}
 
-	if err := exec.Command("mount", fmt.Sprintf("%s1", device), mediaBoot).Run(); err != nil {
+	if err := exec.Command("mount", fmt.Sprintf("%s1", device), mediaBoot).Run(); err != nil { //nolint:gosec
 		return err
 	}
 
@@ -52,8 +52,8 @@ func MountMedia(ctx context.Context, fileSystem afero.Fs, device string) error {
 }
 
 func Flash(ctx context.Context, device string, entry Entry) error {
-	bootSync := exec.Command("rsync", "--progress", "-axv", utility.TrailingSlash(bootMountPoint), utility.TrailingSlash(mediaBoot))
-	rootSync := exec.Command("rsync", "--progress", "-axv", utility.TrailingSlash(rootMountPoint), utility.TrailingSlash(mediaRoot))
+	bootSync := exec.Command("rsync", "--progress", "-axv", utility.TrailingSlash(bootMountPoint), utility.TrailingSlash(mediaBoot)) //nolint:gosec
+	rootSync := exec.Command("rsync", "--progress", "-axv", utility.TrailingSlash(rootMountPoint), utility.TrailingSlash(mediaRoot)) //nolint:gosec
 
 	if err := utility.RunCommandWithOutput(ctx, bootSync, nil); err != nil {
 		return err

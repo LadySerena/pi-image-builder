@@ -34,9 +34,7 @@ import (
 func main() {
 	// todo local or gsutil path for image
 	// todo validate block device
-	// todo blocklist for devices (prevent juggling chainsaws)
 	// todo flag to declare how to slice up the remaining logical partition
-	// todo actually might be better to have a config file for spacing 🤔?
 
 	const decompressedImageFileName = "image-to-be-flashed.img"
 

@@ -160,6 +160,10 @@ func main() {
 		log.Panicf("error configuring cloudinit drop in files: %v", err)
 	}
 
+	if err := configure.Fstab(ctx, mountedFs); err != nil {
+		log.Panicf("error configuring fstab: %v", err)
+	}
+
 	log.Print("image has been configured")
 
 }
