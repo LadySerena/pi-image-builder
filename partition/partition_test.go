@@ -42,7 +42,7 @@ func TestPartedCommand(t *testing.T) {
 	}
 }
 
-func TestHackery(t *testing.T) {
+func TestGetLogicalVolumeSizes(t *testing.T) {
 	foo := VolumeGroupEntry{
 		Name:        "rootvg",
 		PvCount:     "1",
@@ -56,7 +56,7 @@ func TestHackery(t *testing.T) {
 		RootVolumeSize: 10737418240,
 		CSIVolumeSize:  20120076288,
 	}
-	actual, err := hackery(foo)
+	_, _, err := GetLogicalVolumeSizes(foo)
 	assert.NoError(t, err)
 	assert.Equal(t, expected.RootVolumeSize, actual.RootVolumeSize)
 	assert.Equal(t, expected.CSIVolumeSize, actual.CSIVolumeSize)

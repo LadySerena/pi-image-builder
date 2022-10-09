@@ -77,6 +77,10 @@ type VolumeGroupEntry struct {
 	VGFree      string `json:"vg_free"`
 }
 
+func ToLvmArgument(s int) string {
+	return fmt.Sprintf("%dB", s)
+}
+
 type SlicedVolumeGroup struct {
 	RootVolumeSize int
 	CSIVolumeSize  int
@@ -149,10 +153,6 @@ func CreateLogicalVolumes(device string) error {
 
 	rootPartition := fmt.Sprintf("%s2", device)
 
-	// TODO dynamically figure out how to leave about 256MiB for scrubs
-	// ideally this will be equal to totalSize - 256MiB aka 64 extents
-	size := "7410"
-
 	physicalVolume := exec.Command("pvcreate", rootPartition)
 
 	if err := utility.RunCommandWithOutput(context.TODO(), physicalVolume, nil); err != nil {
@@ -164,7 +164,7 @@ func CreateLogicalVolumes(device string) error {
 		return err
 	}
 
-	vgReport := exec.Command("vgs", utility.VolumeGroupName, "--reportformat", "json", "--units", lvmBytes)
+	vgReport := exec.Command("vgs", utility.VolumeGroupName, "--reportformat", "json", "--units", lvmBytes) //nolint:gosec
 	output, reportErr := vgReport.CombinedOutput()
 	if reportErr != nil {
 		return reportErr
@@ -176,10 +176,19 @@ func CreateLogicalVolumes(device string) error {
 		return unmarshalErr
 	}
 
-	//vgSize := parsedReport.Report[0].VG[0].VGSize
+	vgSize := parsedReport.Report[0].VG[0]
+	root, csi, logicalSliceErr := GetLogicalVolumeSizes(vgSize)
+	if logicalSliceErr != nil {
+		return logicalSliceErr
+	}
 
-	logicalVolume := exec.Command("lvcreate", "--extents", size, utility.VolumeGroupName, "-n", utility.LogicalVolumeName, "--wipesignatures", "y") //nolint:gosec
-	if err := utility.RunCommandWithOutput(context.TODO(), logicalVolume, nil); err != nil {
+	rootLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(root), utility.VolumeGroupName, "-n", utility.LogicalVolumeName, "--wipesignatures", "y") //nolint:gosec
+	if err := utility.RunCommandWithOutput(context.TODO(), rootLogicalVolume, nil); err != nil {
+		return err
+	}
+
+	csiLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(csi), utility.VolumeGroupName, "-n", utility.LogicalVolumeName, "--wipesignatures", "y") //nolint:gosec
+	if err := utility.RunCommandWithOutput(context.TODO(), csiLogicalVolume, nil); err != nil {
 		return err
 	}
 
@@ -206,33 +215,24 @@ func CreateFileSystems(device string) error {
 	return nil
 }
 
-// todo better name
-func hackery(entry VolumeGroupEntry) (SlicedVolumeGroup, error) {
+func GetLogicalVolumeSizes(entry VolumeGroupEntry) (RootSize int, CSISize int, err error) {
 
 	initialSize := entry.VGFree
 	initialSize = strings.TrimSuffix(initialSize, lvmBytes)
 	parsedSize, conversionErr := strconv.Atoi(initialSize)
 	if conversionErr != nil {
-		return SlicedVolumeGroup{}, conversionErr
+		return RootSize, CSISize, conversionErr
 	}
 
 	availableSize := parsedSize - (2 * 256 * byteToMebibyteFactor)
 
-	rootSize := 10 * byteToGibibyteFactor
+	RootSize = 10 * byteToGibibyteFactor
 
-	storageSize := availableSize - rootSize
+	CSISize = availableSize - RootSize
 
-	return SlicedVolumeGroup{
-		rootSize,
-		storageSize,
-	}, nil
-}
-
-func getPartitionEntry(data PrintOutput, partitionNumber int) PartitionEntry {
-	for _, entry := range data.Disk.Partitions {
-		if entry.Number == partitionNumber {
-			return entry
-		}
+	if CSISize < (5 * byteToGibibyteFactor) {
+		return RootSize, CSISize, fmt.Errorf("volumegroups: %s does not have enough capacity for csi storage", entry.Name)
 	}
-	return PartitionEntry{}
+
+	return RootSize, CSISize, nil
 }
