@@ -36,7 +36,8 @@ const (
 	ImageName         = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img.xz"
 	BucketName        = "pi-images.serenacodes.com"
 	VolumeGroupName   = "rootvg"
-	LogicalVolumeName = "rootlv"
+	RootLogicalVolume = "rootlv"
+	CSILogicalVolume  = "csilv"
 )
 
 func WrappedClose(closer io.Closer) {
@@ -60,8 +61,8 @@ func RunCommandWithOutput(ctx context.Context, cmd *exec.Cmd, cancel context.Can
 	return nil
 }
 
-func MapperName() string {
-	return fmt.Sprintf("/dev/mapper/%s-%s", VolumeGroupName, LogicalVolumeName)
+func MapperName(volumeName string) string {
+	return fmt.Sprintf("/dev/mapper/%s-%s", VolumeGroupName, volumeName)
 }
 
 func TrailingSlash(inputPath string) string {

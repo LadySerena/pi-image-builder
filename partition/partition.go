@@ -182,12 +182,12 @@ func CreateLogicalVolumes(device string) error {
 		return logicalSliceErr
 	}
 
-	rootLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(root), utility.VolumeGroupName, "-n", utility.LogicalVolumeName, "--wipesignatures", "y") //nolint:gosec
+	rootLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(root), utility.VolumeGroupName, "-n", utility.RootLogicalVolume, "--wipesignatures", "y") //nolint:gosec
 	if err := utility.RunCommandWithOutput(context.TODO(), rootLogicalVolume, nil); err != nil {
 		return err
 	}
 
-	csiLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(csi), utility.VolumeGroupName, "-n", utility.LogicalVolumeName, "--wipesignatures", "y") //nolint:gosec
+	csiLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(csi), utility.VolumeGroupName, "-n", utility.CSILogicalVolume, "--wipesignatures", "y") //nolint:gosec
 	if err := utility.RunCommandWithOutput(context.TODO(), csiLogicalVolume, nil); err != nil {
 		return err
 	}
@@ -197,7 +197,6 @@ func CreateLogicalVolumes(device string) error {
 
 func CreateFileSystems(device string) error {
 	// assume sd* for device
-	mapperName := utility.MapperName()
 
 	// TODO sort out different block devices (loop, nvme append p$NUM) others just have the number at the end
 	bootPartition := fmt.Sprintf("%s1", device)
@@ -207,8 +206,13 @@ func CreateFileSystems(device string) error {
 		return err
 	}
 
-	rootFS := exec.Command("mkfs.ext4", mapperName)
+	rootFS := exec.Command("mkfs.ext4", utility.MapperName(utility.RootLogicalVolume))
 	if err := rootFS.Run(); err != nil {
+		return err
+	}
+
+	csiFS := exec.Command("mkfs.ext4", utility.MapperName(utility.CSILogicalVolume))
+	if err := csiFS.Run(); err != nil {
 		return err
 	}
 

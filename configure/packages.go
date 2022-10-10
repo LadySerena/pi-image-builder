@@ -106,6 +106,10 @@ func Packages(ctx context.Context, fs afero.Fs) error {
 		"nftables",
 		"conntrack",
 		"lvm2",
+		"bash",
+		"util-linux", // findmnt blkid and lsblk for longhorn
+		"grep",
+		"open-iscsi",
 	}
 
 	update, updateCancel := NspawnCommand(ctx, mount, 5*time.Minute, "apt-get", "update")
@@ -341,6 +345,10 @@ func Fstab(ctx context.Context, fs afero.Fs) error {
 	fstab, fstabErr := configFiles.Open("files/fstab")
 	if fstabErr != nil {
 		return fstabErr
+	}
+
+	if dirErr := fs.MkdirAll("/var/lib/longhorn", 0750); dirErr != nil {
+		return dirErr
 	}
 
 	return IdempotentWrite(ctx, fs, fstab, "/etc/fstab", 0644)
