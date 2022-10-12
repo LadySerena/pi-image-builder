@@ -128,14 +128,15 @@ func KernelModules(ctx context.Context, fs afero.Fs) error {
 	kubernetesSysctlPath := "/etc/sysctl.d/10-kubernetes.conf"
 	ciliumSysctlPath := "/etc/sysctl.d/99-override_cilium_rp_filter.conf"
 
+	// todo these k8s sysctls aren't getting written like they should be
 	kubernetesSysctls := Sysctl{
 		"net.bridge.bridge-nf-call-ip6tables": "1",
 		"net.bridge.bridge-nf-call-iptables":  "1",
 		"net.ipv4.ip_forward":                 "1",
 	}
 
+	// todo "net.ipv4.conf.lxc*.rp_filter" seems to break the systemd-sysctl.service ???
 	ciliumSysctls := Sysctl{
-		"net.ipv4.conf.lxc*.rp_filter":    "0",
 		"net.ipv4.conf.all.rp_filter":     "0",
 		"net.ipv4.conf.default.rp_filter": "0",
 	}
