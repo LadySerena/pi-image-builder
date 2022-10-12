@@ -4,7 +4,7 @@ go_tar_ball="go1.19.2.linux-arm64.tar.gz"
 
 sudo apt-get update -y
 
-sudo apt-get install systemd-container e2fsprogs dosfstools lvm2 rsync xz-utils -y
+sudo apt-get install systemd-container e2fsprogs dosfstools lvm2 rsync xz-utils git -y
 
 curl -LO https://go.dev/dl/${go_tar_ball}
 

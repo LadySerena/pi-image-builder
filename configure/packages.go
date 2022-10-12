@@ -339,19 +339,28 @@ func CloudInit(ctx context.Context, fs afero.Fs) error {
 }
 
 func Fstab(ctx context.Context, fs afero.Fs) error {
-	ctx, span := telemetry.GetTracer().Start(ctx, "configure fstab entries")
+	_, span := telemetry.GetTracer().Start(ctx, "configure fstab entries")
 	defer span.End()
 
 	fstab, fstabErr := configFiles.Open("files/fstab")
 	if fstabErr != nil {
 		return fstabErr
 	}
+	defer utility.WrappedClose(fstab)
 
 	if dirErr := fs.MkdirAll("/var/lib/longhorn", 0750); dirErr != nil {
 		return dirErr
 	}
 
-	return IdempotentWrite(ctx, fs, fstab, "/etc/fstab", 0644)
+	mountedFstab, openErr := fs.OpenFile("/etc/fstab", os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
+	if openErr != nil {
+		return openErr
+	}
+	defer utility.WrappedClose(mountedFstab)
+
+	_, copyErr := io.Copy(mountedFstab, fstab)
+
+	return copyErr
 }
 
 func ExtractTarGz(ctx context.Context, fs afero.Fs, r io.Reader) error {

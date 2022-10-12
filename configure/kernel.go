@@ -125,7 +125,7 @@ func KernelModules(ctx context.Context, fs afero.Fs) error {
 	defer span.End()
 
 	modules := strings.Join([]string{"br_netfilter", "overlay"}, "\n")
-	kubernetesSysctlPath := "/etc/modules-load.d/k8s.conf"
+	kubernetesSysctlPath := "/etc/sysctl.d/10-kubernetes.conf"
 	ciliumSysctlPath := "/etc/sysctl.d/99-override_cilium_rp_filter.conf"
 
 	kubernetesSysctls := Sysctl{

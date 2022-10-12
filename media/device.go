@@ -36,7 +36,7 @@ func MountMedia(ctx context.Context, fileSystem afero.Fs, device string) error {
 		return err
 	}
 
-	if err := exec.Command("mount", utility.MapperName(""), mediaRoot).Run(); err != nil { //nolint:gosec
+	if err := exec.Command("mount", utility.MapperName(utility.RootLogicalVolume), mediaRoot).Run(); err != nil { //nolint:gosec
 		return err
 	}
 
