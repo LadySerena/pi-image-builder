@@ -12,3 +12,6 @@ sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf "$go_tar_ball"
 
 # shellcheck disable=SC2016
 echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee -a  /etc/profile
+
+git clone https://github.com/LadySerena/pi-image-builder.git
+(cd ./pi-image-builder; git switch serena/ubuntu)

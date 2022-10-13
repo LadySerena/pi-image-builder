@@ -30,22 +30,17 @@ import (
 	"github.com/spf13/afero"
 )
 
-type Sysctl map[string]string
-
-func (s Sysctl) String() string {
-
-	var returnValue []string
-
-	for key, value := range s {
-		returnValue = append(returnValue, fmt.Sprintf("%s = %s", key, value))
-	}
-
-	return strings.Join(returnValue, "\n")
+type Sysctl []struct {
+	key   string
+	value string
 }
 
-func (s Sysctl) Write(writer io.Writer) (int, error) {
-	data := s.String()
-	return writer.Write([]byte(data))
+func (s *Sysctl) String() string {
+	var returnValue []string
+	for _, entry := range *s {
+		returnValue = append(returnValue, fmt.Sprintf("%s = %s", entry.key, entry.value))
+	}
+	return strings.Join(returnValue, "\n")
 }
 
 func KernelSettings(ctx context.Context, fs afero.Fs) error {
@@ -130,38 +125,36 @@ func KernelModules(ctx context.Context, fs afero.Fs) error {
 
 	// todo these k8s sysctls aren't getting written like they should be
 	kubernetesSysctls := Sysctl{
-		"net.bridge.bridge-nf-call-ip6tables": "1",
-		"net.bridge.bridge-nf-call-iptables":  "1",
-		"net.ipv4.ip_forward":                 "1",
+		{
+			"net.bridge.bridge-nf-call-ip6tables", "1",
+		},
+		{
+			"net.bridge.bridge-nf-call-iptables", "1",
+		},
+		{
+			"net.ipv4.ip_forward", "1",
+		},
 	}
 
 	// todo "net.ipv4.conf.lxc*.rp_filter" seems to break the systemd-sysctl.service ???
 	ciliumSysctls := Sysctl{
-		"net.ipv4.conf.all.rp_filter":     "0",
-		"net.ipv4.conf.default.rp_filter": "0",
+		{
+			"net.ipv4.conf.all.rp_filter", "0",
+		},
+		{
+			"net.ipv4.conf.default.rp_filter", "0",
+		},
 	}
 
 	if err := afero.WriteFile(fs, "/etc/modules-load.d/k8s.conf", []byte(modules), 0644); err != nil {
 		return err
 	}
 
-	kubernetesFile, kubernetesErr := fs.OpenFile(kubernetesSysctlPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if kubernetesErr != nil {
-		return kubernetesErr
-	}
-	defer utility.WrappedClose(kubernetesFile)
-
-	ciliumFile, ciliumErr := fs.OpenFile(ciliumSysctlPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if ciliumErr != nil {
-		return ciliumErr
-	}
-	defer utility.WrappedClose(ciliumFile)
-
-	if _, err := kubernetesSysctls.Write(kubernetesFile); err != nil {
+	if err := afero.WriteFile(fs, kubernetesSysctlPath, []byte(kubernetesSysctls.String()), 0644); err != nil {
 		return err
 	}
 
-	if _, err := ciliumSysctls.Write(ciliumFile); err != nil {
+	if err := afero.WriteFile(fs, ciliumSysctlPath, []byte(ciliumSysctls.String()), 0644); err != nil {
 		return err
 	}
 

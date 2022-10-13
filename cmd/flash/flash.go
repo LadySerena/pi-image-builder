@@ -33,8 +33,6 @@ import (
 
 func main() {
 	// todo local or gsutil path for image
-	// todo validate block device
-	// todo flag to declare how to slice up the remaining logical partition
 
 	const decompressedImageFileName = "image-to-be-flashed.img"
 
@@ -142,5 +140,4 @@ func main() {
 	}
 
 	// todo add cleanup code
-	// todo edit fstab and kernel command line
 }
