@@ -338,7 +338,6 @@ func CloudInit(ctx context.Context, fs afero.Fs) error {
 	return nil
 }
 
-// todo verify fstab is properly written and not corrupt
 func Fstab(ctx context.Context, fs afero.Fs) error {
 	_, span := telemetry.GetTracer().Start(ctx, "configure fstab entries")
 	defer span.End()
@@ -349,6 +348,10 @@ func Fstab(ctx context.Context, fs afero.Fs) error {
 	}
 
 	if dirErr := fs.MkdirAll("/var/lib/longhorn", 0750); dirErr != nil {
+		return dirErr
+	}
+
+	if dirErr := fs.MkdirAll("/var/lib/containerd", 0750); dirErr != nil {
 		return dirErr
 	}
 

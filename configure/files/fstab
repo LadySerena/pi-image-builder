@@ -1,3 +1,4 @@
 LABEL=system-boot       /boot/firmware  vfat    defaults        0       1
 /dev/rootvg/rootlv	/	 ext4	defaults	0 1
 /dev/rootvg/csilv  /var/lib/longhorn ext4 defaults 0 1
+/dev/rootvg/containerdlv  /var/lib/containerd ext4 defaults 0 1

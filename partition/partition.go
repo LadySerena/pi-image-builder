@@ -177,7 +177,7 @@ func CreateLogicalVolumes(device string) error {
 	}
 
 	vgSize := parsedReport.Report[0].VG[0]
-	root, csi, logicalSliceErr := GetLogicalVolumeSizes(vgSize)
+	root, csi, containerd, logicalSliceErr := GetLogicalVolumeSizes(vgSize)
 	if logicalSliceErr != nil {
 		return logicalSliceErr
 	}
@@ -189,6 +189,11 @@ func CreateLogicalVolumes(device string) error {
 
 	csiLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(csi), utility.VolumeGroupName, "-n", utility.CSILogicalVolume, "--wipesignatures", "y") //nolint:gosec
 	if err := utility.RunCommandWithOutput(context.TODO(), csiLogicalVolume, nil); err != nil {
+		return err
+	}
+
+	containerdlogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(containerd), utility.VolumeGroupName, "-n", utility.ContainerdVolume, "--wipesignatures", "y") //nolint:gosec
+	if err := utility.RunCommandWithOutput(context.TODO(), containerdlogicalVolume, nil); err != nil {
 		return err
 	}
 
@@ -206,37 +211,44 @@ func CreateFileSystems(device string) error {
 		return err
 	}
 
-	rootFS := exec.Command("mkfs.ext4", utility.MapperName(utility.RootLogicalVolume))
+	rootFS := exec.Command("mkfs.ext4", utility.MapperName(utility.RootLogicalVolume)) //nolint:gosec
 	if err := rootFS.Run(); err != nil {
 		return err
 	}
 
-	csiFS := exec.Command("mkfs.ext4", utility.MapperName(utility.CSILogicalVolume))
+	csiFS := exec.Command("mkfs.ext4", utility.MapperName(utility.CSILogicalVolume)) //nolint:gosec
 	if err := csiFS.Run(); err != nil {
+		return err
+	}
+
+	containerdFS := exec.Command("mkfs.ext4", utility.MapperName(utility.ContainerdVolume)) //nolint:gosec
+	if err := containerdFS.Run(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func GetLogicalVolumeSizes(entry VolumeGroupEntry) (RootSize int, CSISize int, err error) {
+func GetLogicalVolumeSizes(entry VolumeGroupEntry) (rootSize int, CSISize int, containerdSize int, err error) {
 
 	initialSize := entry.VGFree
 	initialSize = strings.TrimSuffix(initialSize, lvmBytes)
 	parsedSize, conversionErr := strconv.Atoi(initialSize)
 	if conversionErr != nil {
-		return RootSize, CSISize, conversionErr
+		return rootSize, CSISize, containerdSize, conversionErr
 	}
 
 	availableSize := parsedSize - (2 * 256 * byteToMebibyteFactor)
 
-	RootSize = 10 * byteToGibibyteFactor
+	rootSize = 10 * byteToGibibyteFactor
 
-	CSISize = availableSize - RootSize
+	containerdSize = 30 * byteToGibibyteFactor
+
+	CSISize = availableSize - rootSize - containerdSize
 
 	if CSISize < (5 * byteToGibibyteFactor) {
-		return RootSize, CSISize, fmt.Errorf("volumegroups: %s does not have enough capacity for csi storage", entry.Name)
+		return rootSize, CSISize, containerdSize, fmt.Errorf("volumegroups: %s does not have enough capacity for csi storage", entry.Name)
 	}
 
-	return RootSize, CSISize, nil
+	return rootSize, CSISize, containerdSize, nil
 }

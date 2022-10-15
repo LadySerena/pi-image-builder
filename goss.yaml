@@ -1,0 +1,91 @@
+file:
+  /etc/fstab:
+    exists: true
+    mode: "0644"
+    size: 169
+    owner: root
+    group: root
+    filetype: file
+    contains: [ ]
+  /etc/modules-load.d/k8s.conf:
+    exists: true
+    mode: "0644"
+    size: 20
+    owner: root
+    group: root
+    filetype: file
+    contains: [ ]
+package:
+  apt-transport-https:
+    installed: true
+  bash:
+    installed: true
+  ca-certificates:
+    installed: true
+  conntrack:
+    installed: true
+  containerd.io:
+    installed: true
+  curl:
+    installed: true
+  gnupg:
+    installed: true
+  grep:
+    installed: true
+  htop:
+    installed: true
+  lm-sensors:
+    installed: true
+  lsb-release:
+    installed: true
+  lvm2:
+    installed: true
+  nftables:
+    installed: true
+  open-iscsi:
+    installed: true
+  openssh-server:
+    installed: true
+  perl:
+    installed: true
+  sudo:
+    installed: true
+  util-linux:
+    installed: true
+  wget:
+    installed: true
+service:
+  sshd:
+    enabled: true
+    running: true
+user:
+  kat:
+    exists: true
+    uid: 1000
+    gid: 1000
+    groups:
+      - adm
+      - audio
+      - cdrom
+      - dialout
+      - dip
+      - floppy
+      - kat
+      - lxd
+      - netdev
+      - plugdev
+      - sudo
+      - video
+    home: /home/kat
+    shell: /bin/bash
+kernel-param:
+  net.bridge.bridge-nf-call-ip6tables:
+    value: "1"
+  net.bridge.bridge-nf-call-iptables:
+    value: "1"
+  net.ipv4.conf.all.rp_filter:
+    value: "0"
+  net.ipv4.conf.default.rp_filter:
+    value: "0"
+  net.ipv4.ip_forward:
+    value: "1"

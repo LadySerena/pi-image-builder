@@ -123,7 +123,6 @@ func KernelModules(ctx context.Context, fs afero.Fs) error {
 	kubernetesSysctlPath := "/etc/sysctl.d/10-kubernetes.conf"
 	ciliumSysctlPath := "/etc/sysctl.d/99-override_cilium_rp_filter.conf"
 
-	// todo these k8s sysctls aren't getting written like they should be
 	kubernetesSysctls := Sysctl{
 		{
 			"net.bridge.bridge-nf-call-ip6tables", "1",

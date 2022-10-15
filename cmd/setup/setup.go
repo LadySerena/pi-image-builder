@@ -152,7 +152,7 @@ func main() {
 		log.Panicf("error installing packages: %v", err)
 	}
 
-	if err := configure.InstallKubernetes(ctx, mountedFs, "v1.24.3", "v1.24.2", "v1.1.1"); err != nil {
+	if err := configure.InstallKubernetes(ctx, mountedFs, "v1.25.3", "v1.25.0", "v1.1.1"); err != nil {
 		log.Panicf("error installing Kubernetes: %s", err)
 	}
 

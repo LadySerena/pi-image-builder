@@ -56,8 +56,8 @@ func TestGetLogicalVolumeSizes(t *testing.T) {
 		RootVolumeSize: 10737418240,
 		CSIVolumeSize:  20120076288,
 	}
-	_, _, err := GetLogicalVolumeSizes(foo)
+	rootSize, csiSize, _, err := GetLogicalVolumeSizes(foo)
 	assert.NoError(t, err)
-	assert.Equal(t, expected.RootVolumeSize, actual.RootVolumeSize)
-	assert.Equal(t, expected.CSIVolumeSize, actual.CSIVolumeSize)
+	assert.Equal(t, expected.RootVolumeSize, rootSize)
+	assert.Equal(t, expected.CSIVolumeSize, csiSize)
 }

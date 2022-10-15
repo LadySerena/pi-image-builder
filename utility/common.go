@@ -38,6 +38,7 @@ const (
 	VolumeGroupName   = "rootvg"
 	RootLogicalVolume = "rootlv"
 	CSILogicalVolume  = "csilv"
+	ContainerdVolume  = "containerdlv"
 )
 
 func WrappedClose(closer io.Closer) {

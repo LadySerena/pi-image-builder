@@ -34,6 +34,7 @@ import (
 func main() {
 	// todo local or gsutil path for image
 
+	decompressFlag := false
 	const decompressedImageFileName = "image-to-be-flashed.img"
 
 	imageName := flag.StringP("image", "i", "", "specify your desired image")
@@ -79,6 +80,7 @@ func main() {
 		if writeErr := afero.WriteReader(localFs, *imageName, reader); writeErr != nil {
 			log.Panicf("error writing file: %v", writeErr)
 		}
+		decompressFlag = true
 	}
 
 	decompressExists, decompressStatErr := afero.Exists(localFs, decompressedImageFileName)
@@ -86,8 +88,8 @@ func main() {
 		log.Panic(decompressStatErr)
 	}
 
-	// if image is decompressed then skip it
-	if !decompressExists {
+	// if image is decompressed then skip it unless we just decompressed a new image
+	if !decompressExists || decompressFlag {
 		image, openErr := localFs.Open(*imageName)
 		if openErr != nil {
 			log.Panicf("could not open image file: %v", openErr)
