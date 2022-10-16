@@ -3,7 +3,7 @@
 set -x
 
 # leaving this hardcoded because there are 0 safety checks
-device="/dev/sdc"
+device="/dev/sdb"
 
 sudo umount ./mnt/boot/firmware
 

@@ -32,3 +32,5 @@ SHA256SUMS
 mnt
 setup
 !cmd/setup/setup.go
+flash
+!cmd/flash/flash.go

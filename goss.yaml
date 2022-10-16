@@ -2,7 +2,6 @@ file:
   /etc/fstab:
     exists: true
     mode: "0644"
-    size: 169
     owner: root
     group: root
     filetype: file
@@ -10,7 +9,6 @@ file:
   /etc/modules-load.d/k8s.conf:
     exists: true
     mode: "0644"
-    size: 20
     owner: root
     group: root
     filetype: file
@@ -89,3 +87,25 @@ kernel-param:
     value: "0"
   net.ipv4.ip_forward:
     value: "1"
+mount:
+  /:
+    exists: true
+    opts:
+      - rw
+      - relatime
+    source: /dev/rootvg/rootlv
+    filesystem: ext4
+  /var/lib/containerd:
+    exists: true
+    opts:
+      - rw
+      - relatime
+    source: /dev/mapper/rootvg-containerdlv
+    filesystem: ext4
+  /var/lib/longhorn:
+    exists: true
+    opts:
+      - rw
+      - relatime
+    source: /dev/mapper/rootvg-csilv
+    filesystem: ext4
