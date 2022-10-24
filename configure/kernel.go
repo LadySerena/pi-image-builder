@@ -17,11 +17,8 @@
 package configure
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
@@ -45,15 +42,15 @@ func (s *Sysctl) String() string {
 
 func KernelSettings(ctx context.Context, fs afero.Fs) error {
 
-	ctx, span := telemetry.GetTracer().Start(ctx, "configure kernel")
+	_, span := telemetry.GetTracer().Start(ctx, "configure kernel")
 	defer span.End()
 
-	decompressKernel, decompressErr := configFiles.Open("files/decompressKernel.bash")
-	if decompressErr != nil {
-		return decompressErr
-	}
-
-	defer utility.WrappedClose(decompressKernel)
+	//decompressKernel, decompressErr := configFiles.Open("files/decompressKernel.bash")
+	//if decompressErr != nil {
+	//	return decompressErr
+	//}
+	//
+	//defer utility.WrappedClose(decompressKernel)
 
 	commandLineHandle, commandLineOpenErr := fs.OpenFile(commandLinePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0755)
 	if commandLineOpenErr != nil {
@@ -65,51 +62,51 @@ func KernelSettings(ctx context.Context, fs afero.Fs) error {
 		return err
 	}
 
-	if err := IdempotentWrite(ctx, fs, decompressKernel, "/boot/auto_decompress_kernel", 0544); err != nil {
-		return err
-	}
-
-	firmwareConfigFile, firmwareConfigErr := configFiles.Open("files/firmwareConfig")
-	if firmwareConfigErr != nil {
-		return firmwareConfigErr
-	}
-	defer utility.WrappedClose(firmwareConfigFile)
-
-	if err := IdempotentWrite(ctx, fs, firmwareConfigFile, "/boot/firmware/usercfg.txt", 0755); err != nil {
-		return err
-	}
-
-	compressedKernelImage, fsOpenErr := fs.Open("/boot/firmware/vmlinuz")
-	if fsOpenErr != nil {
-		return fsOpenErr
-	}
-	defer utility.WrappedClose(compressedKernelImage)
-
-	decompressedKernelImage, openErr := fs.OpenFile("/boot/firmware/vmlinux", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if openErr != nil {
-		return openErr
-	}
-	defer utility.WrappedClose(decompressedKernelImage)
-
-	reader, readerErr := gzip.NewReader(compressedKernelImage)
-	if readerErr != nil {
-		return readerErr
-	}
-	defer utility.WrappedClose(reader)
-
-	buffer, decompressErr := io.ReadAll(reader)
-	if decompressErr != nil {
-		return decompressErr
-	}
-
-	_, writeErr := decompressedKernelImage.Write(buffer)
-	if writeErr != nil {
-		return writeErr
-	}
-
-	if err := IdempotentWrite(ctx, fs, bytes.NewBufferString(postInvoke), "/etc/apt/apt.conf.d/999_decompress_rpi_kernel", 0644); err != nil {
-		return err
-	}
+	//if err := IdempotentWrite(ctx, fs, decompressKernel, "/boot/auto_decompress_kernel", 0544); err != nil {
+	//	return err
+	//}
+	//
+	//firmwareConfigFile, firmwareConfigErr := configFiles.Open("files/firmwareConfig")
+	//if firmwareConfigErr != nil {
+	//	return firmwareConfigErr
+	//}
+	//defer utility.WrappedClose(firmwareConfigFile)
+	//
+	//if err := IdempotentWrite(ctx, fs, firmwareConfigFile, "/boot/firmware/usercfg.txt", 0755); err != nil {
+	//	return err
+	//}
+	//
+	//compressedKernelImage, fsOpenErr := fs.Open("/boot/firmware/vmlinuz")
+	//if fsOpenErr != nil {
+	//	return fsOpenErr
+	//}
+	//defer utility.WrappedClose(compressedKernelImage)
+	//
+	//decompressedKernelImage, openErr := fs.OpenFile("/boot/firmware/vmlinux", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	//if openErr != nil {
+	//	return openErr
+	//}
+	//defer utility.WrappedClose(decompressedKernelImage)
+	//
+	//reader, readerErr := gzip.NewReader(compressedKernelImage)
+	//if readerErr != nil {
+	//	return readerErr
+	//}
+	//defer utility.WrappedClose(reader)
+	//
+	//buffer, decompressErr := io.ReadAll(reader)
+	//if decompressErr != nil {
+	//	return decompressErr
+	//}
+	//
+	//_, writeErr := decompressedKernelImage.Write(buffer)
+	//if writeErr != nil {
+	//	return writeErr
+	//}
+	//
+	//if err := IdempotentWrite(ctx, fs, bytes.NewBufferString(postInvoke), "/etc/apt/apt.conf.d/999_decompress_rpi_kernel", 0644); err != nil {
+	//	return err
+	//}
 
 	return nil
 }

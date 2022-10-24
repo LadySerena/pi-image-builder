@@ -32,8 +32,9 @@ import (
 )
 
 const (
-	ExtractName       = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img"
-	ImageName         = "ubuntu-20.04.5-preinstalled-server-arm64+raspi.img.xz"
+	DownloadURL       = "https://cdimage.ubuntu.com/releases/22.04/release/"
+	ExtractName       = "ubuntu-22.04.1-preinstalled-server-arm64+raspi.img"
+	ImageName         = "ubuntu-22.04.1-preinstalled-server-arm64+raspi.img.xz"
 	BucketName        = "pi-images.serenacodes.com"
 	VolumeGroupName   = "rootvg"
 	RootLogicalVolume = "rootlv"

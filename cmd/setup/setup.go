@@ -46,7 +46,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if !*enableTracing {
+	if *enableTracing {
 		tp, traceErr := telemetry.NewExporter("http://localhost:14268/api/traces")
 		if traceErr != nil {
 			log.Panicf("error creating tracer: %v", traceErr)

@@ -42,7 +42,7 @@ func DownloadAndVerifyMedia(ctx context.Context, fileSystem afero.Fs, forceOverw
 	ctx, span := telemetry.GetTracer().Start(ctx, "download media")
 	defer span.End()
 
-	releaseURL, parseErr := url.Parse("https://cdimage.ubuntu.com/releases/20.04/release")
+	releaseURL, parseErr := url.Parse(utility.DownloadURL)
 	if parseErr != nil {
 		return parseErr
 	}

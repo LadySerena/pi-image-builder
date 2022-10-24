@@ -182,17 +182,17 @@ func CreateLogicalVolumes(device string) error {
 		return logicalSliceErr
 	}
 
-	rootLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(root), utility.VolumeGroupName, "-n", utility.RootLogicalVolume, "--wipesignatures", "y") //nolint:gosec
+	rootLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(root), utility.VolumeGroupName, "-n", utility.RootLogicalVolume, "--wipesignatures", "y", "--yes") //nolint:gosec
 	if err := utility.RunCommandWithOutput(context.TODO(), rootLogicalVolume, nil); err != nil {
 		return err
 	}
 
-	csiLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(csi), utility.VolumeGroupName, "-n", utility.CSILogicalVolume, "--wipesignatures", "y") //nolint:gosec
+	csiLogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(csi), utility.VolumeGroupName, "-n", utility.CSILogicalVolume, "--wipesignatures", "y", "--yes") //nolint:gosec
 	if err := utility.RunCommandWithOutput(context.TODO(), csiLogicalVolume, nil); err != nil {
 		return err
 	}
 
-	containerdlogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(containerd), utility.VolumeGroupName, "-n", utility.ContainerdVolume, "--wipesignatures", "y") //nolint:gosec
+	containerdlogicalVolume := exec.Command("lvcreate", "--size", ToLvmArgument(containerd), utility.VolumeGroupName, "-n", utility.ContainerdVolume, "--wipesignatures", "y", "--yes") //nolint:gosec
 	if err := utility.RunCommandWithOutput(context.TODO(), containerdlogicalVolume, nil); err != nil {
 		return err
 	}

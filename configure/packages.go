@@ -299,7 +299,7 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 		return err
 	}
 
-	return nil
+	return StaticPods(ctx, fs)
 }
 
 func CloudInit(ctx context.Context, fs afero.Fs) error {
@@ -356,6 +356,22 @@ func Fstab(ctx context.Context, fs afero.Fs) error {
 	}
 
 	return afero.WriteFile(fs, "/etc/fstab", fstab, 0644)
+}
+
+func StaticPods(ctx context.Context, fs afero.Fs) error {
+	_, span := telemetry.GetTracer().Start(ctx, "configure fstab entries")
+	defer span.End()
+
+	kubeVip, kubeVipErr := configFiles.ReadFile("files/kube-vip.yaml")
+	if kubeVipErr != nil {
+		return kubeVipErr
+	}
+
+	if dirErr := fs.MkdirAll("/etc/kubernetes/manifests", 0750); dirErr != nil {
+		return dirErr
+	}
+
+	return afero.WriteFile(fs, "/etc/kubernetes/manifests/kube-vip.yaml", kubeVip, 0600)
 }
 
 func ExtractTarGz(ctx context.Context, fs afero.Fs, r io.Reader) error {
