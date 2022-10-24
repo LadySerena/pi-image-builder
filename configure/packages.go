@@ -51,10 +51,11 @@ const (
 type ErrStatusCode struct {
 	expectedCode int
 	statusCode   int
+	url          string
 }
 
-func NewErrStatusCode(expectedCode int, statusCode int) *ErrStatusCode {
-	return &ErrStatusCode{expectedCode: expectedCode, statusCode: statusCode}
+func NewErrStatusCode(expectedCode int, statusCode int, url string) *ErrStatusCode {
+	return &ErrStatusCode{expectedCode: expectedCode, statusCode: statusCode, url: url}
 }
 
 type KubernetesDownload struct {
@@ -76,7 +77,7 @@ func (d KubernetesDownload) URL() string {
 }
 
 func (e ErrStatusCode) Error() string {
-	return fmt.Sprintf("expected http code: %d, got %d instead", e.expectedCode, e.statusCode)
+	return fmt.Sprintf("expected http code: %d, got %d instead for %s", e.expectedCode, e.statusCode, e.url)
 }
 
 func NspawnCommand(ctx context.Context, mount string, timeout time.Duration, args ...string) (*exec.Cmd, context.CancelFunc) {
@@ -201,12 +202,13 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 		return err
 	}
 
-	cniDownload, cniDownloadErr := otelhttp.Get(ctx, fmt.Sprintf("https://github.com/containernetworking/plugins/releases/download/%s/cni-plugins-linux-%s-%s.tgz", cniVersion, arch, cniVersion))
+	cniUrl := fmt.Sprintf("https://github.com/containernetworking/plugins/releases/download/%s/cni-plugins-linux-%s-%s.tgz", cniVersion, arch, cniVersion)
+	cniDownload, cniDownloadErr := otelhttp.Get(ctx, cniUrl)
 	if cniDownloadErr != nil {
 		return cniDownloadErr
 	}
 	if cniDownload.StatusCode != http.StatusOK {
-		return NewErrStatusCode(http.StatusOK, cniDownload.StatusCode)
+		return NewErrStatusCode(http.StatusOK, cniDownload.StatusCode, cniUrl)
 	}
 	defer cniDownload.Body.Close()
 
@@ -215,12 +217,13 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 		return err
 	}
 
-	criCtlDownload, criCtlDownloadErr := otelhttp.Get(ctx, fmt.Sprintf("https://github.com/kubernetes-sigs/cri-tools/releases/download/%s/crictl-%s-linux-%s.tar.gz", criCtlVersion, criCtlVersion, arch))
+	criCtlUrl := fmt.Sprintf("https://github.com/kubernetes-sigs/cri-tools/releases/download/%s/crictl-%s-linux-%s.tar.gz", criCtlVersion, criCtlVersion, arch)
+	criCtlDownload, criCtlDownloadErr := otelhttp.Get(ctx, criCtlUrl)
 	if criCtlDownloadErr != nil {
 		return criCtlDownloadErr
 	}
 	if criCtlDownload.StatusCode != http.StatusOK {
-		return NewErrStatusCode(http.StatusOK, criCtlDownload.StatusCode)
+		return NewErrStatusCode(http.StatusOK, criCtlDownload.StatusCode, criCtlUrl)
 	}
 	defer cniDownload.Body.Close()
 
@@ -230,12 +233,13 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 		return err
 	}
 
-	kubeadmDownload, kubeadmErr := otelhttp.Get(ctx, NewKubernetesDownload("kubeadm", kubernetesVersion, arch).URL())
+	kubeadmUrl := NewKubernetesDownload("kubeadm", kubernetesVersion, arch).URL()
+	kubeadmDownload, kubeadmErr := otelhttp.Get(ctx, kubeadmUrl)
 	if kubeadmErr != nil {
 		return kubeadmErr
 	}
 	if kubeadmDownload.StatusCode != http.StatusOK {
-		return NewErrStatusCode(http.StatusOK, kubeadmDownload.StatusCode)
+		return NewErrStatusCode(http.StatusOK, kubeadmDownload.StatusCode, kubeadmUrl)
 	}
 	defer kubeadmDownload.Body.Close()
 
@@ -243,12 +247,13 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 		return err
 	}
 
-	kubeletDownload, kubeletErr := otelhttp.Get(ctx, NewKubernetesDownload("kubelet", kubernetesVersion, arch).URL())
+	kubeletUrl := NewKubernetesDownload("kubelet", kubernetesVersion, arch).URL()
+	kubeletDownload, kubeletErr := otelhttp.Get(ctx, kubeletUrl)
 	if kubeletErr != nil {
 		return kubeletErr
 	}
 	if kubeletDownload.StatusCode != http.StatusOK {
-		return NewErrStatusCode(http.StatusOK, kubeletDownload.StatusCode)
+		return NewErrStatusCode(http.StatusOK, kubeletDownload.StatusCode, kubeletUrl)
 	}
 	defer kubeletDownload.Body.Close()
 
@@ -256,12 +261,13 @@ func InstallKubernetes(ctx context.Context, fs afero.Fs, kubernetesVersion strin
 		return err
 	}
 
-	kubectlDownload, kubectlErr := otelhttp.Get(ctx, NewKubernetesDownload("kubectl", kubernetesVersion, arch).URL())
+	kubectlUrl := NewKubernetesDownload("kubectl", kubernetesVersion, arch).URL()
+	kubectlDownload, kubectlErr := otelhttp.Get(ctx, kubectlUrl)
 	if kubectlErr != nil {
 		return kubectlErr
 	}
 	if kubectlDownload.StatusCode != http.StatusOK {
-		return NewErrStatusCode(http.StatusOK, kubectlDownload.StatusCode)
+		return NewErrStatusCode(http.StatusOK, kubectlDownload.StatusCode, kubectlUrl)
 	}
 	defer kubectlDownload.Body.Close()
 
